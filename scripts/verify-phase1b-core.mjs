@@ -34,7 +34,9 @@ const MAX_EVIDENCE_FILE_BYTES = 2 * 1024 * 1024
 const DEFAULT_COMMAND_TIMEOUT_MS = 120_000
 const SHA256 = /^[a-f0-9]{64}$/
 const PACKAGE_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const REPOSITORY_ROOT = resolve(PACKAGE_ROOT, '..')
+const CANONICAL_V8_MIGRATIONS = join(PACKAGE_ROOT, 'vendor', 'schema-v8')
+const DEFAULT_PROTECTED_DATA_DIRECTORY = join(PACKAGE_ROOT, 'acceptance', 'formal-data-sentinel')
+const FORMAL_DATA_SOURCES = Object.freeze(['standalone-sentinel', 'git-common-dir', 'explicit'])
 const EXPECTED_MIGRATIONS = Object.freeze([
   '001_init.sql',
   '002_stage_layer.sql',
@@ -192,7 +194,6 @@ export async function assertCanonicalPathsOutsideFormal(candidates, formalDataDi
 
 export async function resolveFormalDataDirectory({
   explicitFormalDataDirectory,
-  gitCommonDirectory,
 } = {}) {
   let candidate
   let source
@@ -203,12 +204,8 @@ export async function resolveFormalDataDirectory({
     candidate = explicitFormalDataDirectory
     source = 'explicit'
   } else {
-    const common = gitCommonDirectory ?? (await gitRead([
-      'rev-parse', '--path-format=absolute', '--git-common-dir',
-    ])).trim()
-    if (typeof common !== 'string' || !isAbsolute(common)) fail('FORMAL_DATA_DIRECTORY_INVALID')
-    candidate = resolve(dirname(common), 'nobei-backend-2', 'data')
-    source = 'git-common-dir'
+    candidate = DEFAULT_PROTECTED_DATA_DIRECTORY
+    source = 'standalone-sentinel'
   }
   let metadata
   let canonical
@@ -298,7 +295,7 @@ export function deriveVerificationObservations({
   pathIsolationStdout,
   pathIsolationSha256,
   formalDataDirectory,
-  formalDataSource = 'git-common-dir',
+  formalDataSource = 'standalone-sentinel',
   operationalPathCount,
 }) {
   let provider
@@ -321,7 +318,7 @@ export function deriveVerificationObservations({
     || pathIsolationSha256 !== sha256(Buffer.from(pathIsolationStdout, 'utf8'))
     || typeof formalDataDirectory !== 'string'
     || !isAbsolute(formalDataDirectory)
-    || !['git-common-dir', 'explicit'].includes(formalDataSource)
+    || !FORMAL_DATA_SOURCES.includes(formalDataSource)
     || !Number.isSafeInteger(operationalPathCount)
     || operationalPathCount < 1
   ) fail('VERIFICATION_OBSERVATION_INVALID')
@@ -519,7 +516,7 @@ function validateObservations(value, formalDataDirectory) {
     || !Number.isSafeInteger(value.pathIsolation.passedTests)
     || value.pathIsolation.passedTests < 1
     || !SHA256.test(value.pathIsolation.stdoutSha256 ?? '')
-    || !['git-common-dir', 'explicit'].includes(value.pathIsolation.formalDataSource)
+    || !FORMAL_DATA_SOURCES.includes(value.pathIsolation.formalDataSource)
     || value.pathIsolation.formalDataDirectorySha256
       !== sha256(Buffer.from(formalDataDirectory, 'utf8'))
     || !Number.isSafeInteger(value.pathIsolation.checkedOperationalPaths)
@@ -947,7 +944,7 @@ export function assertGitCommitProvenance({
 }
 
 async function gitRead(args) {
-  const child = spawn('git', args, { cwd: REPOSITORY_ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn('git', args, { cwd: PACKAGE_ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
   const stdout = captureStream(child.stdout, 64 * 1024)
   const stderr = captureStream(child.stderr, 4096)
   const outcome = await new Promise((resolveOutcome, rejectOutcome) => {
@@ -1021,7 +1018,12 @@ export async function validateEvidenceTree(evidenceRoot, { formalDataDirectory, 
       fail('GIT_COMMIT_MISMATCH')
     }
   } else if (manifest.gitCommit !== headCommit) {
-    const parentCommit = (await gitRead(['rev-parse', 'HEAD^'])).trim()
+    let parentCommit
+    try {
+      parentCommit = (await gitRead(['rev-parse', 'HEAD^'])).trim()
+    } catch {
+      fail('GIT_COMMIT_MISMATCH')
+    }
     const changedPaths = (await gitRead([
       'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD',
     ])).split('\n').filter(Boolean)
@@ -1030,7 +1032,7 @@ export async function validateEvidenceTree(evidenceRoot, { formalDataDirectory, 
       headCommit,
       parentCommit,
       changedPaths,
-      evidenceRelativeRoot: relative(REPOSITORY_ROOT, evidenceRoot).split(sep).join('/'),
+      evidenceRelativeRoot: relative(PACKAGE_ROOT, evidenceRoot).split(sep).join('/'),
     })
   }
   if (
@@ -1760,7 +1762,7 @@ async function inspectPackage({ recorder, tarball, extractRoot, python, workRoot
   for (const name of EXPECTED_MIGRATIONS) {
     const [packed, canonicalMigration] = await Promise.all([
       readFile(join(extractedPackage, 'python', 'nobei_core', 'sql', 'v8', name)),
-      readFile(join(REPOSITORY_ROOT, 'nobei-backend-2', 'db', 'migrations', name)),
+      readFile(join(CANONICAL_V8_MIGRATIONS, name)),
     ])
     if (!packed.equals(canonicalMigration)) fail('PACKAGE_MIGRATION_DIGEST_MISMATCH')
   }
@@ -1926,11 +1928,11 @@ export async function runVerification({
   const statusArgv = ['git', 'status', '--porcelain=v1', '--untracked-files=all']
   const commitArgv = ['git', 'rev-parse', 'HEAD']
   const statusProbe = await runCommand(ignoredRecorder, 'git-status-preflight', statusArgv, {
-    cwd: REPOSITORY_ROOT, env: preflightEnv,
+    cwd: PACKAGE_ROOT, env: preflightEnv,
   })
   assertAllowedGitStatus(statusProbe.stdout)
   const commitProbe = await runCommand(ignoredRecorder, 'git-commit-preflight', commitArgv, {
-    cwd: REPOSITORY_ROOT, env: preflightEnv,
+    cwd: PACKAGE_ROOT, env: preflightEnv,
   })
   const commit = commitProbe.stdout.trim()
   if (!/^[a-f0-9]{40}$/.test(commit)) fail('GIT_COMMIT_INVALID')
@@ -1949,7 +1951,7 @@ export async function runVerification({
       [workRoot, packRoot, extractRoot, disposableHome], formalDataDirectory,
     )
     await Promise.all([mkdir(packRoot), mkdir(disposableHome)])
-    const redact = redactor([PACKAGE_ROOT, REPOSITORY_ROOT, homedir()])
+    const redact = redactor([PACKAGE_ROOT, homedir()])
     recorder = new CommandRecorder(stagingRoot, redact)
     await recorder.record('git-status-preflight', statusArgv, 0, statusProbe.stderr, {
       signal: null, stableCode: 'OK', stdout: statusProbe.stdout,

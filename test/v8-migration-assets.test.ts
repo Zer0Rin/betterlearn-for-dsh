@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 
-const source = new URL('../../nobei-backend-2/db/migrations/', import.meta.url)
+const source = new URL('../vendor/schema-v8/', import.meta.url)
 const staged = new URL('../python/nobei_core/sql/v8/', import.meta.url)
 
 describe('schema-v8 package assets', () => {

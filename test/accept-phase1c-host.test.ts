@@ -10,12 +10,23 @@ import {
   parseDshReadyUrl,
   productRequestHeaders,
 } from '../scripts/accept-phase1c-host.mjs'
+import * as hostAcceptance from '../scripts/accept-phase1c-host.mjs'
 
 const fakeProviderPatchPath = fileURLToPath(
   new URL('../acceptance/fake-provider/cordis.patch.yml', import.meta.url),
 )
 
 describe('Phase 1C acceptance runner contract', () => {
+  test('defaults isolation checks to the standalone protected-data sentinel', () => {
+    const resolver = (hostAcceptance as Record<string, unknown>).resolveAcceptanceFormalDataDirectory
+    expect(resolver).toBeTypeOf('function')
+    expect((resolver as (source?: Record<string, string>) => string)())
+      .toBe(fileURLToPath(new URL('../acceptance/formal-data-sentinel', import.meta.url)))
+    expect((resolver as (source?: Record<string, string>) => string)({
+      NOBEI_FORMAL_DATA_DIRECTORY: '/tmp/external-formal-data',
+    })).toBe('/tmp/external-formal-data')
+  })
+
   test('renders an optional registry config for DSH profile subprocesses', () => {
     expect(acceptanceRegistryConfig({ PNPM_CONFIG_REGISTRY: 'https://registry.example.test' }))
       .toBe('registry=https://registry.example.test\n')

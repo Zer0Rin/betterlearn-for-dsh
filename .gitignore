@@ -1,8 +1,11 @@
+.DS_Store
+node_modules/
+dist/
 .venv-phase1b/
+.pytest_cache/
+**/__pycache__/
 python/nobei_core/sql/v8/
 lib/
 acceptance/*/lib/
-evidence/client/
-evidence/core/
-evidence/host/
-evidence/real-model/
+acceptance/*/dist/
+evidence/

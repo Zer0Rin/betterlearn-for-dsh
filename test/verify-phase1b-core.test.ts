@@ -33,7 +33,7 @@ import * as phase1bVerifier from '../scripts/verify-phase1b-core.mjs'
 const roots: string[] = []
 const digest = (value: string) => createHash('sha256').update(value).digest('hex')
 const currentCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-  cwd: new URL('../..', import.meta.url), encoding: 'utf8',
+  cwd: new URL('../', import.meta.url), encoding: 'utf8',
 }).trim()
 
 function processExists(pid: number) {
@@ -324,34 +324,25 @@ describe('Phase 1B evidence verifier', () => {
       .toContain('package/python/nobei_core/evidence_replay.py')
   })
 
-  test('derives the formal data directory from the main git common directory, not the worktree', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nobei-phase1b-git-common-'))
-    roots.push(root)
-    const mainRoot = join(root, 'main')
-    const gitCommonDirectory = join(mainRoot, '.git')
-    const formalDataDirectory = join(mainRoot, 'nobei-backend-2', 'data')
-    await mkdir(gitCommonDirectory, { recursive: true })
-    await mkdir(formalDataDirectory, { recursive: true })
-
+  test('uses the bundled protected-data sentinel when no external formal directory is configured', async () => {
     const resolver = (phase1bVerifier as Record<string, unknown>).resolveFormalDataDirectory
     expect(resolver).toBeTypeOf('function')
-    await expect((resolver as (input: object) => Promise<object>)({ gitCommonDirectory }))
+    await expect((resolver as (input: object) => Promise<object>)({}))
       .resolves.toMatchObject({
-        path: await realpath(formalDataDirectory),
-        source: 'git-common-dir',
+        path: await realpath(new URL('../acceptance/formal-data-sentinel/', import.meta.url)),
+        source: 'standalone-sentinel',
         exists: true,
       })
   })
 
-  test('refuses a missing formal data directory instead of silently guarding a hypothetical path', async () => {
+  test('refuses a missing explicitly configured formal data directory', async () => {
     const root = await mkdtemp(join(tmpdir(), 'nobei-phase1b-missing-formal-'))
     roots.push(root)
-    const gitCommonDirectory = join(root, 'main', '.git')
-    await mkdir(gitCommonDirectory, { recursive: true })
+    const explicitFormalDataDirectory = join(root, 'missing-formal-data')
 
     const resolver = (phase1bVerifier as Record<string, unknown>).resolveFormalDataDirectory
     expect(resolver).toBeTypeOf('function')
-    await expect((resolver as (input: object) => Promise<object>)({ gitCommonDirectory }))
+    await expect((resolver as (input: object) => Promise<object>)({ explicitFormalDataDirectory }))
       .rejects.toThrow('FORMAL_DATA_DIRECTORY_INVALID')
   })
 

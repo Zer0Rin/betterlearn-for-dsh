@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const packageRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const sourceRoot = resolve(packageRoot, '..', 'nobei-backend-2', 'db', 'migrations')
+const sourceRoot = resolve(packageRoot, 'vendor', 'schema-v8')
 const destinationRoot = resolve(packageRoot, 'python', 'nobei_core', 'sql', 'v8')
 
 function sha256(bytes) {

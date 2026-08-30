@@ -2,7 +2,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { execFile } from 'node:child_process'
@@ -176,13 +176,19 @@ async function installedPackageVersion(profileRoot, packageName) {
   return packageJson.version
 }
 
+export function resolveAcceptanceFormalDataDirectory(source = process.env) {
+  const configured = source.NOBEI_FORMAL_DATA_DIRECTORY
+  if (configured !== undefined) {
+    if (typeof configured !== 'string' || !isAbsolute(configured)) {
+      throw new Error('FORMAL_DATA_DIRECTORY_INVALID')
+    }
+    return configured
+  }
+  return join(ROOT, 'acceptance', 'formal-data-sentinel')
+}
+
 async function formalDataDirectory() {
-  const { stdout } = await run([
-    '/usr/bin/git', 'rev-parse', '--path-format=absolute', '--git-common-dir',
-  ], { cwd: ROOT, env: process.env })
-  const commonDirectory = stdout.trim()
-  if (!commonDirectory.startsWith('/')) throw new Error('FORMAL_DATA_DIRECTORY_INVALID')
-  return resolve(dirname(commonDirectory), 'nobei-backend-2', 'data')
+  return resolveAcceptanceFormalDataDirectory()
 }
 
 export async function prepareAcceptanceRuntime({

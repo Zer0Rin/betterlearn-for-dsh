@@ -1,24 +1,38 @@
-import { access, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { describe, expect, test } from 'vitest'
+import { CLIENT_SEAM_PACKAGES, CRITICAL_PROFILE_PACKAGES } from '../scripts/dsh-topology.mjs'
 
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path)
-    return true
-  } catch {
-    return false
-  }
-}
+const RC7 = '0.1.0-rc.7'
+const RC7_COMMIT = '99f6f02fecdb7dff40c3fbc9470f5907c29f74ca'
 
 describe('rc.7 pinset', () => {
-  test('is byte-identical to the audited phase0 pinset', async () => {
-    expect(await exists('config/dsh-rc7-pins.json')).toBe(true)
-    if (!await exists('config/dsh-rc7-pins.json')) return
-
-    const [actual, audited] = await Promise.all([
+  test('pins every runtime seam to the audited rc.7 release', async () => {
+    const [pinsetText, packageText] = await Promise.all([
       readFile('config/dsh-rc7-pins.json', 'utf8'),
-      readFile('../dsh-phase0/config/dsh-rc7-pins.json', 'utf8'),
+      readFile('package.json', 'utf8'),
     ])
-    expect(actual).toBe(audited)
+    const pinset = JSON.parse(pinsetText) as {
+      release: string
+      tagCommit: string
+      packages: Record<string, string>
+    }
+    const manifest = JSON.parse(packageText) as {
+      peerDependencies: Record<string, string>
+      devDependencies: Record<string, string>
+    }
+
+    expect(pinset.release).toBe(RC7)
+    expect(pinset.tagCommit).toBe(RC7_COMMIT)
+    for (const name of [...CRITICAL_PROFILE_PACKAGES, ...CLIENT_SEAM_PACKAGES]) {
+      expect(pinset.packages[name], name).toBe(RC7)
+    }
+    for (const [name, version] of Object.entries(pinset.packages)) {
+      if (name.startsWith('@deepseek-ai/dsh')) expect(version, name).toBe(RC7)
+    }
+    for (const dependencies of [manifest.peerDependencies, manifest.devDependencies]) {
+      for (const [name, version] of Object.entries(dependencies)) {
+        if (name.startsWith('@deepseek-ai/dsh')) expect(version, name).toBe(RC7)
+      }
+    }
   })
 })
