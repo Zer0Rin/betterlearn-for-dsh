@@ -1,0 +1,21 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "rpc_import_fixture",
+    "method": "documents.import_text",
+    "params": {
+      "filename": "photosynthesis.md",
+      "mediaType": "text/markdown",
+      "text": "Plants convert light energy into chemical energy."
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "rpc_import_fixture",
+    "result": {
+      "documentId": "__RUNTIME_DOCUMENT_ID__",
+      "runId": "__RUNTIME_RUN_ID__",
+      "revision": 1
+    }
+  }
+}

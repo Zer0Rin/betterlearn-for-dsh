@@ -1,0 +1,24 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "rpc_review_conflict_fixture",
+    "method": "candidates.review",
+    "params": {
+      "candidateId": "__RUNTIME_CANDIDATE_ID__",
+      "action": "accept",
+      "expectedRevision": 2,
+      "idempotencyKey": "idem_0123456789abcdefabcd"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "rpc_review_conflict_fixture",
+    "error": {
+      "code": -32000,
+      "message": "REVISION_CONFLICT",
+      "data": {
+        "code": "REVISION_CONFLICT"
+      }
+    }
+  }
+}

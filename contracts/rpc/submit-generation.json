@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": "rpc_submit_generation_fixture",
+  "method": "runs.submit_generation",
+  "params": {
+    "runId": "__RUNTIME_RUN_ID__",
+    "attemptId": "__RUNTIME_ATTEMPT_ID__",
+    "expectedRevision": "__RUNTIME_EXPECTED_REVISION__",
+    "output": {
+      "schemaVersion": 1,
+      "candidates": []
+    }
+  }
+}

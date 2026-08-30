@@ -1,0 +1,132 @@
+{
+  "name": "@nobei/dsh-phase1",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/types/**/*.d.ts",
+    "contracts/**/*.json",
+    "python/requirements-phase1.lock",
+    "python/requirements-phase1.txt",
+    "python/nobei_core/**/*.py",
+    "python/nobei_core/sql/**/*.sql",
+    "python/nobei_core/sql/**/*.json",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-model-selection"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json && node scripts/build-client.mjs",
+    "pretest": "pnpm build && pnpm stage:v8",
+    "test": "vitest run",
+    "stage:v8": "node scripts/stage-v8-migrations.mjs",
+    "test:phase1b-python": "node scripts/run-phase1b-python.mjs",
+    "test:phase1b": "pnpm test && pnpm test:phase1b-python",
+    "verify:phase1b": "node scripts/verify-phase1b-core.mjs",
+    "verify:phase1c": "node scripts/verify-phase1c-host.mjs",
+    "accept:phase1c:prepare": "node scripts/accept-phase1c-host.mjs prepare",
+    "accept:phase1c:execute": "node scripts/accept-phase1c-host.mjs execute",
+    "accept:phase1d:prepare": "node scripts/accept-phase1d-client.mjs prepare",
+    "accept:phase1d:execute": "node scripts/accept-phase1d-client.mjs execute",
+    "pack:acceptance": "pnpm build && pnpm pack --pack-destination dist",
+    "spike:prepare": "node scripts/accept-spike.mjs prepare",
+    "spike:execute": "node scripts/accept-spike.mjs execute",
+    "spike:verify": "node scripts/verify-spike.mjs",
+    "spike:phase1e:model-propagation": "node scripts/spike-phase1e-model-propagation.mjs",
+    "authorize:phase1e": "node scripts/write-phase1e-authorization-grant.mjs",
+    "authorize:phase1e:continuation": "node scripts/write-phase1e-continuation-grant.mjs",
+    "accept:phase1e:prepare": "node scripts/accept-phase1e-real-model.mjs prepare",
+    "accept:phase1e:first-run": "node scripts/accept-phase1e-real-model.mjs first-run",
+    "accept:phase1e:remaining": "node scripts/accept-phase1e-real-model.mjs remaining",
+    "verify:phase1e": "node scripts/verify-phase1e-real-model.mjs",
+    "accept:phase1e:a3:prepare": "node scripts/accept-phase1e-real-model.mjs prepare --batch-policy flash-low-stability",
+    "accept:phase1e:a3:run": "node scripts/accept-phase1e-real-model.mjs diagnostic",
+    "verify:phase1e:a3": "node scripts/verify-phase1e-real-model.mjs",
+    "prepack": "pnpm stage:v8"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-brand": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-model-selection": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-code-runtime": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-subprocess": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-workflow": "0.1.0-rc.7"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-brand": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-modules": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-model-selection": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-code-runtime": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-subagent-spawn-in-process": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-subprocess": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-subprocess-local": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-timeout": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-web-app": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-workflow": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-workflow-worker-thread": "0.1.0-rc.7",
+    "@playwright/test": "1.62.1",
+    "@types/node": "24.3.0",
+    "@types/react": "18.3.1",
+    "@types/react-test-renderer": "18.3.0",
+    "ajv": "8.17.1",
+    "esbuild": "0.25.12",
+    "js-yaml": "4.3.1",
+    "react": "18.2.0",
+    "react-test-renderer": "18.2.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "rpc_retry_and_prepare_fixture",
+    "method": "runs.retry_and_prepare_generation",
+    "params": {
+      "runId": "__RUNTIME_RUN_ID__",
+      "expectedRevision": "__RUNTIME_EXPECTED_REVISION__"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "rpc_retry_and_prepare_fixture",
+    "result": {
+      "runId": "__RUNTIME_RUN_ID__",
+      "attemptId": "__RUNTIME_ATTEMPT_ID__",
+      "attemptNumber": 2,
+      "revision": "__RUNTIME_REVISION__",
+      "schemaVersion": 1,
+      "schemaSha256": "__RUNTIME_SCHEMA_SHA256__",
+      "promptVersion": "l1-v2",
+      "document": {
+        "text": "Phase 1C performs import and generation preparation atomically.",
+        "sha256": "__RUNTIME_DOCUMENT_SHA256__"
+      },
+      "modelSelection": {
+        "provider": "provider-fixture",
+        "model": "model-fixture",
+        "reasoningEffort": "medium"
+      },
+      "requestDigest": "__RUNTIME_REQUEST_DIGEST__",
+      "providerIdempotencyKey": "__RUNTIME_PROVIDER_IDEMPOTENCY_KEY__"
+    }
+  }
+}

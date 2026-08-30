@@ -1,0 +1,5 @@
+- insert:
+    - id: nobei-phase1e-real-model-observer
+      name: '@nobei/dsh-phase1e-real-model-observer'
+      config:
+        ledgerToken: !!js process.env.NOBEI_PHASE1E_OBSERVER_LEDGER_TOKEN

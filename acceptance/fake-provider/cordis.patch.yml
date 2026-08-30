@@ -1,0 +1,9 @@
+- insert:
+    - id: nobei-phase1c-fake-provider
+      name: '@nobei/dsh-phase1c-fake-provider'
+      config:
+        ledgerToken: !!js process.env.NOBEI_PHASE1C_FAKE_LEDGER_TOKEN
+- id: llm-deepseek
+  disabled: true
+- id: llm-pi-ai
+  disabled: true

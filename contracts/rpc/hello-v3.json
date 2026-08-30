@@ -1,0 +1,29 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "rpc_hello_v3_fixture",
+    "method": "system.hello",
+    "params": {
+      "protocolVersion": 3,
+      "schemaVersion": 1,
+      "schemaSha256": "__RUNTIME_SCHEMA_SHA256__"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "rpc_hello_v3_fixture",
+    "result": {
+      "protocolVersion": 3,
+      "coreVersion": "phase1e",
+      "databaseKind": "sqlite",
+      "capabilities": [
+        "l1-text-extraction",
+        "atomic-generation-commands",
+        "model-selection-snapshot"
+      ],
+      "schemaVersion": 1,
+      "schemaSha256": "__RUNTIME_SCHEMA_SHA256__",
+      "dataRootKind": "isolated-phase1"
+    }
+  }
+}

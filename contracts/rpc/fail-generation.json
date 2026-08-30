@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": "rpc_fail_generation_fixture",
+  "method": "runs.fail_generation",
+  "params": {
+    "runId": "__RUNTIME_RUN_ID__",
+    "attemptId": "__RUNTIME_ATTEMPT_ID__",
+    "expectedRevision": "__RUNTIME_EXPECTED_REVISION__",
+    "code": "GENERATION_PROVIDER_ERROR"
+  }
+}

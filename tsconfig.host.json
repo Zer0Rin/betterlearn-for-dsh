@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": false
+  },
+  "include": [
+    "src/index.ts",
+    "src/acceptance/**/*.ts",
+    "src/product/**/*.ts",
+    "src/spike/**/*.ts"
+  ]
+}

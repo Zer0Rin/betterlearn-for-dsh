@@ -1,0 +1,33 @@
+- insert:
+    - id: nobei-phase1c
+      name: '@nobei/dsh-phase1'
+      config:
+        pythonExecutable: !!js process.env.NOBEI_PHASE1C_PYTHON_EXECUTABLE
+        dataRoot: !!js process.env.NOBEI_PHASE1C_DATA_ROOT
+        ownershipToken: !!js process.env.NOBEI_PHASE1C_OWNERSHIP_TOKEN
+- id: llm-retry
+  disabled: true
+- id: session-title-llm
+  disabled: true
+- id: subagent-spawn-in-process
+  config:
+    providerName: spawn
+  disabled: false
+- id: workflow-worker-thread
+  config:
+    provider: spawn
+    maxConcurrentAgents: 1
+    maxTotalAgents: 1
+    maxItemsPerCall: 1
+    syncTimeoutMs: 1000
+    disposeGraceMs: 1000
+  disabled: false
+- id: tool-workflow
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: agent-loop
+  config:
+    agents: []

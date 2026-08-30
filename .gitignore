@@ -1,0 +1,8 @@
+.venv-phase1b/
+python/nobei_core/sql/v8/
+lib/
+acceptance/*/lib/
+evidence/client/
+evidence/core/
+evidence/host/
+evidence/real-model/
