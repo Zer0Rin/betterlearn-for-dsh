@@ -6,6 +6,8 @@ BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-
 
 客户端通过 `dsh.client.platform: web` 加载，并注入 `conversation.view`。Electron 不是插件侧的另一套实现目标。
 
+`conversation.view`是列表槽；BetterLearn注册`id: nobei`的独立标签页，`order: 50`只控制排序。空会话通过`conversation.input.dock`提供导入入口。选择完整视图是为了容纳导入、原文证据与逐条审核，不是向聊天事件流新增业务行，也不覆盖其他标签。当前共存边界来自bundle patch对专用profile的宿主设置覆盖，详见[安装说明](install.md#专用-profile-的能力范围)；尚未承诺在日常编码profile中与任意其他bundle共用。
+
 ## 2. 组件职责
 
 ### Client
@@ -46,6 +48,8 @@ BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-
 4. 接受、修改、拒绝均由 Core 的事务和幂等键裁决。
 5. Host 崩溃后的恢复以 Core 持久状态为准。
 6. 构建、单元测试和 replay 不产生真实模型费用。
+
+模型配置解析与生成是两个步骤：`DshModelSelectionResolver`调用`ctx.llm.resolveCallConfig`解析选择；`StructuredGenerationAdapter`通过`workflowEngine`创建独立子Agent执行规划或提取，而非自行直连provider的流接口。插件提供的prompt、Schema、调用成本与缓存边界见[Model Experience](../README.md#model-experience)。
 
 ## 4. 仓库结构
 

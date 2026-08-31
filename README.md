@@ -72,3 +72,33 @@ corepack pnpm@11.23.0 pack:acceptance
 安装、启动、升级、备份恢复及保留数据卸载见 [安装说明](docs/install.md)。当前为单机单用户本地插件；PDF只解析文字层，不提供OCR，保存规范化正文而不是原PDF。TXT/Markdown与PDF解析正文上限512KiB，PDF文件上限5MiB。
 
 验收要求与分阶段结果见 [交付验收](docs/delivery-plan.md)。P2/P3开发期的旧fixture库不作为升级源；首次交付从最终产品schema的空目录开始，之后同schema升级保留数据。
+
+## Model Experience
+
+### 规划与候选提取
+
+#### What the model sees
+
+用户开始提取时，Host通过DSH的`ctx.llm.resolveCallConfig`解析模型配置，由Core冻结provider、model与reasoning effort。实际生成由`workflowEngine`执行`agent(prompt, { schema })`，每次规划或提取创建独立的父/子Agent；配置解析本身不是一次候选生成。切换DSH模型只影响新任务，已有任务重试仍沿用冻结的选择。
+
+插件显式提供两类输入：规划请求包含当前容器各块的ID和正文，要求按顺序完整分组；提取请求包含当前正文范围、逐字引用证据的规则，以及`structured_output`候选Schema。L1直接提供全文，L2/L3逐组提供正文，L3另有边界范围提取。PDF先在本地解析为规范化文字，不把原PDF或页面图像交给模型。插件不主动拼接其他批次的回答或用户聊天记录；最终请求仍由DSH组装其系统上下文和工具说明。
+
+当前新任务的`l1-v3`提示词要求选择主要且不重复的知识点、遵守字段数量和长度限制，并原样复制quote。兼容DSH所需的Schema转换会把其不支持的数量/长度关键字写进字段description；返回后仍由完整契约校验。提取Agent只允许`structured_output`，不能执行bash、读写文件或其他工具。具体请求构造见 [generation-adapter.ts](src/product/generation-adapter.ts)，字段约束见 [候选契约](contracts/l1-candidate.schema.json)。
+
+#### Token effect
+
+L1每次提取最多1次模型调用；L2/L3包含规划和分批提取，界面预览的`maxCalls`是整个计划的上限，不是已发起次数或最终提取批数。实际分组决定调用数量，失败时可能提前停止。规划与提取会重复发送相应正文，L3重叠容器和边界也会产生重复输入；字符分块预算不是精确token估算。路由与上限计算见 [P3提取契约](docs/p3-extraction-contract.md)。
+
+每次生成请求设置`maxTokens=32768`，推理与结构化答案共用该输出预算；这不是承诺用满的数量，也不是费用上限。材料长度、批次、模型和推理档位都会影响实际用量。模型已返回但格式或证据未通过校验时，已发生的调用仍可能收费。格式错误或无效规划导致整个attempt失败时，不保存此前批次的候选；证据定位阶段则决定哪些候选及证据可以进入审核。仅用户显式“重新提取”才重跑整个计划，不续接此前成功批次。正文预览、审核、SSE进度、轮询、页面刷新及重新连接不发起提取调用。
+
+#### KV Cache effect
+
+各次规划/提取是独立请求，插件不维护或复用跨批次的模型KV缓存，不把前批上下文累计到下一批。相同提示词和工具定义可能形成可复用的请求前缀，但正文、任务提示词版本、Schema说明或宿主上下文变化会改变请求内容；规划和提取也不是同一份前缀。缓存是否命中、可复用长度以及计费由DSH实际组装的请求和provider决定，不能承诺缓存命中或固定节省比例。
+
+## Known Limitations and Deferred Work
+
+- 当前只支持单机单用户macOS/Linux上的DSH Web插件，安装需维护CLI完成Python与数据目录初始化；预构建tarball是当前交付渠道，不承诺npm包名或Git源码直接安装。许可证与公开发布信息留到发布前明确。
+- `conversation.view`注册的是独立标签页，不覆盖其他视图；但随包的patch会修改专用profile中的工具、重试和workflow设置。不要把它直接叠加到日常编码profile；具体影响见 [专用profile限制](docs/install.md#专用-profile-的能力范围)。
+- PDF只支持文字层，无OCR；证据定位针对保存的规范化正文，不保证原PDF版面坐标。正文上限512KiB、PDF文件上限5MiB；不保存原PDF。
+- 每次提取调用最多20条候选，长文按多批汇总；精确quote匹配不等于知识点语义正确或覆盖完整，仍需人工审核。fake验收和有限真实试用不代表任意模型、任意材料的质量保证，已验证范围见 [验证说明](docs/validation.md)。
+- 当前配置由维护CLI提供并由Host手写校验，尚未导出Schemastery `Config`或提供插件设置卡片；客户端模型目录订阅尚未整理到`inject.hooks`。这些是后续小步整理项，不影响当前试用的既有支持范围。
