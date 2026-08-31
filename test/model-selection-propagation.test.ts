@@ -126,6 +126,27 @@ describe('ModelSelectionPropagation', () => {
     propagationB.disposeBoundaries()
   })
 
+  test('observes only owned child model chunks and disposes the activity listener', () => {
+    const host = hostContext({ child: 'parent' })
+    let listener: any
+    const disposed = vi.fn()
+    const child = { ...agentContext().ctx, on: vi.fn((name, cb) => {
+      expect(name).toBe('session/event'); listener = cb; return disposed
+    }) }
+    const activity = vi.fn()
+    const propagation = new ModelSelectionPropagation(host.ctx as never, { provider: 'p', model: 'm' }, vi.fn(() => vi.fn()))
+    propagation.observeChildren({ id: 'parent' } as never, activity)
+    host.emit({ id: 'child', ctx: child })
+    expect(listener).toBeTypeOf('function')
+    listener({ id: 'unrelated' }, { type: 'assistant/chunk', time: 10 })
+    listener({ id: 'child' }, { type: 'user/message', time: 20 })
+    expect(activity).not.toHaveBeenCalled()
+    listener({ id: 'child' }, { type: 'assistant/chunk', time: 30 })
+    expect(activity).toHaveBeenCalledExactlyOnceWith(30)
+    propagation.disposeBoundaries()
+    expect(disposed).toHaveBeenCalledOnce()
+  })
+
   test('fails settlement when no exact owned child was observed', () => {
     const host = hostContext({})
     const propagation = new ModelSelectionPropagation(host.ctx as never, {

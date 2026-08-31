@@ -93,8 +93,10 @@ function harness(options: {
     cancel() { facts.cancel += 1 },
     async dispose() { facts.dispose += 1 },
   }
+  let emitProgress = (_p: any) => {}
   const adapter = {
-    async start(value: PreparedGeneration, signal: AbortSignal) {
+    async start(value: PreparedGeneration, signal: AbortSignal, onProgress?: (p: any) => void) {
+      emitProgress = p => { (handle as any).progress = p; onProgress?.(p) }
       facts.starts.push({ prepared: value, signal })
       return handle
     },
@@ -109,7 +111,7 @@ function harness(options: {
   const coordinator = new GenerationCoordinator(
     supervisor as never, adapter as never, resolver as never,
   )
-  return { coordinator, outcome, facts }
+  return { coordinator, outcome, facts, progress: (p: any) => emitProgress(p) }
 }
 
 async function flush(): Promise<void> {
@@ -122,6 +124,27 @@ afterEach(() => {
 })
 
 describe('GenerationCoordinator', () => {
+  test('keeps progress in memory, separates runs and removes it on completion', async () => {
+    const h = harness()
+    const changed = vi.fn()
+    h.coordinator.watchRun('run_1', changed)
+    expect(h.coordinator.getProgress('run_1')).toBeNull()
+    await h.coordinator.launchImport(importParams())
+    const p = { phase: 'extracting', completedBatches: 1, totalBatches: 4, startedAt: 1, lastResponseAt: 2 }
+    h.progress(p)
+    expect(changed).toHaveBeenLastCalledWith(p)
+    expect(h.coordinator.getProgress('run_1')).toEqual(p)
+    expect(h.coordinator.getProgress('run_2')).toBeNull()
+    expect(h.facts.submits).toHaveLength(0)
+    expect(h.facts.fails).toHaveLength(0)
+    h.outcome.resolve({ ok: true, value: {} })
+    await vi.waitFor(() => expect(h.coordinator.activeCount).toBe(0))
+    expect(h.coordinator.getProgress('run_1')).toBeNull()
+    const count = changed.mock.calls.length
+    h.progress(p)
+    expect(changed).toHaveBeenCalledTimes(count)
+  })
+
   test.each([true, false])('notifies only the subscribed run after Core finalizes (success=%s)', async success => {
     const { coordinator, outcome, facts } = harness()
     const changed = vi.fn(() => expect(facts.submits.length + facts.fails.length).toBe(1))

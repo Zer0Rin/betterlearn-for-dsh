@@ -1,4 +1,5 @@
 import type { ClientApi, EventPage, RunEvent, RunSnapshot } from './types.js'
+import type { GenerationProgress } from '../generation-progress.js'
 
 export interface PollScheduler {
   sleep(ms: number, signal: AbortSignal): Promise<void>
@@ -40,16 +41,23 @@ export async function pollRun(options: {
   signal: AbortSignal
   scheduler: PollScheduler
   onUpdate(update: PollUpdate): void
+  onProgress?(progress: GenerationProgress | null): void
 }): Promise<void> {
   const { api, runId, signal, scheduler, onUpdate } = options
   let after = options.after
   let delayMs = 1_000
   if (signal.aborted) return
   let changed = false
+  let finished = false
+  let progressVersion = 0
   let sleepController: AbortController | undefined
   let unwatch = api.watchRun?.(runId, () => {
     changed = true
     sleepController?.abort()
+  }, progress => {
+    if (signal.aborted || finished) return
+    progressVersion++
+    options.onProgress?.(progress)
   })
   const stopWatching = () => {
     unwatch?.()
@@ -65,12 +73,17 @@ export async function pollRun(options: {
         if (signal.aborted) return
       }
       changed = false
-      const [run, page] = await Promise.all([
+      const requestedProgressVersion = progressVersion
+      const [run, page, progress] = await Promise.all([
         api.getRun(runId, signal),
         api.listEvents(runId, after, signal),
+        options.onProgress ? api.getProgress?.(runId, signal).catch(() => undefined) : undefined,
       ])
       if (signal.aborted) return
       validateEventPage(after, page)
+      finished = PAUSE_OR_TERMINAL.has(run.status)
+      if (finished) options.onProgress?.(null)
+      else if (progress !== undefined && progressVersion === requestedProgressVersion) options.onProgress?.(progress)
       onUpdate({ run, events: page.events, nextAfter: page.nextAfter })
       after = page.nextAfter
       if (PAUSE_OR_TERMINAL.has(run.status)) return
@@ -89,6 +102,7 @@ export async function pollRun(options: {
       delayMs = receivedEvents || changed ? 1_000 : Math.min(delayMs * 2, 8_000)
     }
   } finally {
+    finished = true
     signal.removeEventListener('abort', stopWatching)
     stopWatching()
   }

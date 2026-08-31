@@ -6,6 +6,7 @@ import { GENERATION_TOOL_DENIAL } from './constants.js'
 import type { CandidateContract } from './contract.js'
 import { ModelSelectionPropagation } from './model-selection-propagation.js'
 import type { ExtractionPlan, GenerationFailureCode, PreparedGeneration } from './types.js'
+import type { GenerationProgress } from '../generation-progress.js'
 
 export const WORKFLOW_SCRIPT = 'const value = await agent(args.prompt, { schema: args.schema })\nreturn value'
 export { GENERATION_TOOL_DENIAL } from './constants.js'
@@ -15,6 +16,7 @@ export type GenerationAdapterResult =
   | { ok: false; code: Exclude<GenerationFailureCode, 'GENERATION_TIMEOUT'> }
 
 export interface GenerationHandle {
+  readonly progress?: GenerationProgress
   readonly result: Promise<GenerationAdapterResult>
   cancel(): void
   dispose(): Promise<void>
@@ -148,7 +150,7 @@ export class StructuredGenerationAdapter {
     private readonly options: StructuredGenerationAdapterOptions,
   ) {}
 
-  async start(prepared: PreparedGeneration, signal: AbortSignal): Promise<GenerationHandle> {
+  async start(prepared: PreparedGeneration, signal: AbortSignal, onProgress?: (progress: GenerationProgress) => void): Promise<GenerationHandle> {
     // Freeze once; each call gets its own parent/child propagation boundary.
     const frozen = { ...prepared, modelSelection: { ...prepared.modelSelection } }
     const controller = new AbortController()
@@ -158,13 +160,30 @@ export class StructuredGenerationAdapter {
     if (signal.aborted) cancel()
     const points = Array.from(prepared.document.text)
     const plan = prepared.extractionPlan
+    const progress: GenerationProgress = {
+      phase: !plan || plan.strategy === 'L1' ? 'extracting' : 'planning',
+      completedBatches: 0, totalBatches: !plan || plan.strategy === 'L1' ? 1 : null,
+      startedAt: Date.now(), lastResponseAt: null,
+    }
+    let observing = true
+    let lastNotification = 0
+    const notify = () => { lastNotification = Date.now(); onProgress?.({ ...progress }) }
+    const onResponse = (time: number) => {
+      if (!observing || controller.signal.aborted) return
+      const firstResponse = progress.lastResponseAt === null
+      progress.lastResponseAt = time
+      if (firstResponse || Date.now() - lastNotification >= 1000) notify()
+    }
     let calls = 0
     const call = async (prompt: string, schema: unknown, planning = false): Promise<GenerationAdapterResult> => {
       if (controller.signal.aborted) return { ok: false, code: 'GENERATION_PROVIDER_ERROR' }
       if (++calls > (plan?.maxCalls ?? 1)) return { ok: false, code: 'GENERATION_SCHEMA_INVALID' }
-      current = await this.startCall(frozen, controller.signal, prompt, schema, planning)
+      progress.phase = planning ? 'planning' : 'extracting'
+      notify()
+      current = await this.startCall(frozen, controller.signal, prompt, schema, planning, onResponse)
       if (controller.signal.aborted) current.cancel()
       const result = await current.result
+      if (result.ok && !planning) progress.completedBatches++
       current = undefined
       return result
     }
@@ -174,8 +193,14 @@ export class StructuredGenerationAdapter {
     )
     const result = (async (): Promise<GenerationAdapterResult> => {
       try {
-        if (!plan || plan.strategy === 'L1') return await extract(0, points.length)
+        if (!plan || plan.strategy === 'L1') {
+          const output = await extract(0, points.length)
+          if (output.ok) { progress.phase = 'validating'; notify() }
+          return output
+        }
         const batches: Array<{ textStart: number; textEnd: number; output: Record<string, unknown> }> = []
+        let plannedContainers = 0
+        let plannedBatches = plan.boundaries.length
         for (const container of plan.containers) {
           const blocks = container.blockIds.map(id => plan.blocks.find(block => block.id === id)!)
           if (blocks.some(block => !block)) return { ok: false, code: 'GENERATION_SCHEMA_INVALID' }
@@ -183,6 +208,8 @@ export class StructuredGenerationAdapter {
           if (!planned.ok) return planned
           const groups = validatePlannerGroups(planned.value, container.blockIds)
           if (!groups) return { ok: false, code: 'GENERATION_SCHEMA_INVALID' }
+          plannedBatches += groups.length
+          if (++plannedContainers === plan.containers.length) progress.totalBatches = plannedBatches
           for (const group of groups) {
             const first = plan.blocks.find(block => block.id === group[0])!
             const last = plan.blocks.find(block => block.id === group[group.length - 1])!
@@ -196,18 +223,21 @@ export class StructuredGenerationAdapter {
           if (!output.ok) return output
           batches.push({ ...boundary, output: output.value })
         }
+        progress.phase = 'validating'
+        notify()
         return { ok: true, value: { batches } }
       } catch (error) {
         warnGeneration(this.ctx, `plan failed (${error instanceof Error ? error.message : String(error)})`)
         return { ok: false, code: 'GENERATION_PROVIDER_ERROR' }
       } finally {
+        observing = false
         signal.removeEventListener('abort', cancel)
       }
     })()
-    return { result, cancel, dispose: async () => { cancel(); await result } }
+    return { result, get progress() { return { ...progress } }, cancel, dispose: async () => { cancel(); await result } }
   }
 
-  private async startCall(prepared: PreparedGeneration, signal: AbortSignal, prompt: string, schema: unknown, planning: boolean): Promise<GenerationHandle> {
+  private async startCall(prepared: PreparedGeneration, signal: AbortSignal, prompt: string, schema: unknown, planning: boolean, onResponse: (time: number) => void): Promise<GenerationHandle> {
     const propagation = new ModelSelectionPropagation(this.ctx, prepared.modelSelection)
     const parent = await this.ctx.agents.create({
       sessionId: SessionId(`nobei-phase1c-${randomUUID()}`),
@@ -217,7 +247,7 @@ export class StructuredGenerationAdapter {
       signal,
     })
     try {
-      propagation.observeChildren(parent.agent)
+      propagation.observeChildren(parent.agent, onResponse)
     } catch (error) {
       propagation.disposeBoundaries()
       await parent.dispose().catch(() => undefined)

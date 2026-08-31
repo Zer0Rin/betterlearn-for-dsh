@@ -10,6 +10,7 @@ import type {
   CandidateSnapshot,
   KnowledgePointSnapshot,
 } from './types.js'
+import type { GenerationProgress } from '../generation-progress.js'
 
 export class ProductApiError extends Error {
   constructor(readonly status: number, readonly code: string) {
@@ -56,10 +57,18 @@ export function createClientApi(): ClientApi {
     previewDocument(input, signal) {
       return post<DocumentPreview>('/nobei/v1/documents/preview', input, signal)
     },
-    watchRun(runId, onChange) {
+    getProgress(runId, signal) {
+      return get<GenerationProgress | null>(`/nobei/v1/runs/${encodeURIComponent(runId)}/progress`, signal)
+    },
+    watchRun(runId, onChange, onProgress) {
       if (typeof EventSource === 'undefined') return () => undefined
       const stream = new EventSource(`/nobei/v1/runs/${encodeURIComponent(runId)}/stream`)
       stream.addEventListener('run.changed', onChange)
+      if (onProgress) stream.addEventListener('run.progress', event => {
+        let progress: GenerationProgress
+        try { progress = JSON.parse((event as MessageEvent).data) } catch { return }
+        onProgress(progress)
+      })
       // Polling continues independently; a broken SSE connection is not a run failure.
       stream.onerror = () => stream.close()
       return () => stream.close()

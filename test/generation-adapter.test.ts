@@ -60,6 +60,7 @@ function fakeContext(outcome: unknown, options: {
     restrictions: [] as Array<{ scope: string; value: unknown }>,
     guards: [] as Array<{ scope: string; guard: (execution: { name: string }) => string | undefined }>,
     modelHooks: [] as Array<{ scope: string; name: string }>,
+    responseListeners: new Set<(session: { id: string }, event: { type: string; time: number }) => void>(),
     workflowCancel: 0,
     workflowDispose: 0,
     parentDispose: 0,
@@ -67,8 +68,12 @@ function fakeContext(outcome: unknown, options: {
   const creationListeners = new Set<(event: { agent: any }) => void>()
   const owners = new Map<string, string>()
   const scopedContext = (scope: string) => ({
-    on(name: string, _listener: unknown) {
+    on(name: string, listener: any) {
       facts.modelHooks.push({ scope, name })
+      if (name === 'session/event') {
+        facts.responseListeners.add(listener)
+        return () => facts.responseListeners.delete(listener)
+      }
       return vi.fn()
     },
     tools: {
@@ -140,6 +145,42 @@ function complete(value: unknown = structured) {
 }
 
 describe('StructuredGenerationAdapter', () => {
+  test('L1 uses actual chunk times, throttles only notifications, and stops observing at completion', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(10000)
+    try {
+      let finish!: (value: unknown) => void
+      const { ctx, facts } = fakeContext(() => new Promise(resolve => { finish = resolve }))
+      const updates: any[] = []
+      const handle = await new StructuredGenerationAdapter(ctx as any, contract(), { packageRoot: '/fixture' })
+        .start(prepared, new AbortController().signal, p => updates.push(p))
+      expect(handle.progress).toMatchObject({ phase: 'extracting', completedBatches: 0, totalBatches: 1, lastResponseAt: null })
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(handle.progress?.lastResponseAt).toBeNull()
+      const response = [...facts.responseListeners][0]!
+      response({ id: 'child_owned' }, { type: 'assistant/chunk', time: 14990 })
+      expect(updates.at(-1).lastResponseAt).toBe(14990)
+      const beforeBurst = updates.length
+      await vi.advanceTimersByTimeAsync(100)
+      response({ id: 'child_owned' }, { type: 'assistant/chunk', time: 15090 })
+      expect(updates).toHaveLength(beforeBurst)
+      expect(handle.progress?.lastResponseAt).toBe(15090)
+      await vi.advanceTimersByTimeAsync(900)
+      response({ id: 'child_owned' }, { type: 'assistant/chunk', time: 15990 })
+      expect(updates).toHaveLength(beforeBurst + 1)
+      finish(complete())
+      expect(await handle.result).toEqual({ ok: true, value: structured })
+      expect(handle.progress).toMatchObject({ phase: 'validating', completedBatches: 1, totalBatches: 1, lastResponseAt: 15990 })
+      expect(facts.responseListeners.size).toBe(0)
+      const afterCompletion = updates.length
+      response({ id: 'child_owned' }, { type: 'assistant/chunk', time: 17000 })
+      expect(updates).toHaveLength(afterCompletion)
+      expect(handle.progress?.lastResponseAt).toBe(15990)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('l1-v2 requires exact unique quotes without changing the source boundary', () => {
     const prompt = promptFor({
       promptVersion: 'l1-v2',
@@ -236,6 +277,7 @@ describe('StructuredGenerationAdapter', () => {
       { scope: 'parent', name: 'agent/request' },
       { scope: 'child', name: 'system-prompt/assemble' },
       { scope: 'child', name: 'agent/request' },
+      { scope: 'child', name: 'session/event' },
     ])
     expect(fake.facts.guards).toHaveLength(2)
     for (const { guard } of fake.facts.guards) {
@@ -384,7 +426,10 @@ describe('P3 semantic execution', () => {
   })
   test.each(['L2', 'L3'] as const)('%s plans actual groups then serial extraction and boundaries with codepoint offsets', async strategy => {
     const input = longPrepared(strategy)
+    const progress: any[] = []
+    const atCalls: any[] = []
     const fake = fakeContext((request: any) => {
+      atCalls.push(progress.at(-1))
       if (request.args.prompt.includes('BLOCKS_JSON:')) {
         const blocks = JSON.parse(request.args.prompt.split('BLOCKS_JSON:\n')[1])
         return complete({ groups: blocks.map((block: any) => ({ blockIds: [block.id] })) })
@@ -392,10 +437,14 @@ describe('P3 semantic execution', () => {
       return complete(structured)
     })
     const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), { packageRoot: '/owned' })
-    const handle = await adapter.start(input, new AbortController().signal)
+    const handle = await adapter.start(input, new AbortController().signal, update => progress.push(update))
     input.modelSelection.model = 'changed-after-start'
     const result = await handle.result
     expect(result.ok).toBe(true)
+    expect(handle.progress).toMatchObject({ phase: 'validating', completedBatches: strategy === 'L2' ? 4 : 6, totalBatches: strategy === 'L2' ? 4 : 6, lastResponseAt: null })
+    expect(atCalls.map(p => [p.phase, p.completedBatches, p.totalBatches])).toEqual(strategy === 'L2'
+      ? [['planning', 0, null], ['extracting', 0, 4], ['extracting', 1, 4], ['extracting', 2, 4], ['extracting', 3, 4]]
+      : [['planning', 0, null], ['extracting', 0, null], ['extracting', 1, null], ['extracting', 2, null], ['planning', 3, null], ['extracting', 3, 6], ['extracting', 4, 6], ['extracting', 5, 6]])
     if (!result.ok) return
     const batches = result.value.batches as any[]
     expect(batches.map(batch => [batch.textStart, batch.textEnd])).toEqual(strategy === 'L2'

@@ -1,10 +1,12 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { GenerationProgress } from '../../generation-progress.js'
 import type { ClientApi, RunSnapshot } from '../types.js'
 import { useDocumentPreview } from '../use-document-preview.js'
 import { modelSelectionLabel } from '../model-directory-bridge.js'
 import { generationFailureCopy, workspaceCopy } from '../workspace-copy.js'
 
 export interface RunProgressProps {
+  progress?: GenerationProgress | null
   run?: RunSnapshot
   busy: boolean
   serviceUnavailable: boolean
@@ -17,6 +19,25 @@ export interface RunProgressProps {
 
 const steps = ['文档已保存', '正在生成候选', '正在校验证据', '等待审核'] as const
 
+function GenerationDetail({ progress }: { progress: GenerationProgress }) {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const since = progress.lastResponseAt === null ? null : Math.max(0, Math.floor((now - progress.lastResponseAt) / 1000))
+  const label = progress.phase === 'planning' ? '正在规划提取批次'
+    : progress.phase === 'validating' ? '提取完成，正在校验证据'
+      : `正在提取第 ${progress.completedBatches + 1}${progress.totalBatches === null ? ' 批（总批数规划中）' : ` / ${progress.totalBatches} 批`}`
+  return <div className="nobei-client__notice" data-testid="nobei-generation-detail">
+    <p role="status">{label}</p>
+    <p>{`已完成 ${progress.completedBatches} 批提取；校验完成后进入审核。`}</p>
+    <p>{since === null ? '尚未收到模型响应，正在等待。'
+      : `最近模型响应：${new Date(progress.lastResponseAt!).toLocaleTimeString('zh-CN', { hour12: false })}（${since} 秒前）`}</p>
+    {since !== null && since >= 30 && <p>暂未收到新数据，仍在等待；不会自动重新提取。</p>}
+  </div>
+}
+
 function activeStep(run: RunSnapshot | undefined): number {
   if (run?.status === 'review_pending' || run?.status === 'completed') return 3
   if (run?.status === 'validating') return 2
@@ -24,7 +45,7 @@ function activeStep(run: RunSnapshot | undefined): number {
 }
 
 export function RunProgress({
-  run, busy, serviceUnavailable, message, onRetry, onReload, onReset, previewDocument,
+  run, busy, serviceUnavailable, message, onRetry, onReload, onReset, previewDocument, progress,
 }: RunProgressProps) {
   const active = activeStep(run)
   const failed = run?.status === 'failed_retryable' || run?.status === 'failed_terminal'
@@ -51,6 +72,9 @@ export function RunProgress({
           </li>
         ))}
       </ol>
+
+      {!serviceUnavailable && progress && (run?.status === 'generating' || run?.status === 'validating')
+        && <GenerationDetail progress={progress} />}
 
       {serviceUnavailable && (
         <div className="nobei-client__notice" role="status">

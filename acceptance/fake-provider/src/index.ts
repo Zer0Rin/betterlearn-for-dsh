@@ -258,6 +258,19 @@ export class FakeProviderAdapter extends LlmAdapter {
       return
     }
 
+    const progressFixture = requestText.includes('fixture:progress')
+    if (progressFixture) {
+      if (!await delay(4000, options.signal)) {
+        this.#records.push({ ...base, result: 'aborted' }); yield aborted(); return
+      }
+      const text = 'Fixture activity.'
+      yield { type: 'block-start', index: 0, blockType: 'reasoning' }
+      yield { type: 'reasoning-delta', index: 0, text }
+      if (!await delay(4000, options.signal)) {
+        this.#records.push({ ...base, result: 'aborted' }); yield aborted(); return
+      }
+      yield { type: 'block-end', index: 0, block: { type: 'reasoning', text } }
+    }
     const fixtureKey = Object.keys(this.#fixtures).sort().find((key) => requestText.includes(`fixture:${key}`))
     const value = p3Fixture(options.messages) ?? (fixtureKey === undefined
       ? { schemaVersion: 1, candidates: [] }
@@ -269,10 +282,11 @@ export class FakeProviderAdapter extends LlmAdapter {
     }
     const id = CallId(`nobei-fake-${this.#records.length + 1}`)
     const argumentsJson = JSON.stringify(value)
+    const index = progressFixture ? 1 : 0
     const chunks: StreamChunk[] = [
-      { type: 'block-start', index: 0, blockType: 'tool-call' },
-      { type: 'tool-call-delta', index: 0, id, name: TOOL, argumentsDelta: argumentsJson },
-      { type: 'block-end', index: 0, block: { type: 'tool-call', id, name: TOOL, arguments: argumentsJson } },
+      { type: 'block-start', index, blockType: 'tool-call' },
+      { type: 'tool-call-delta', index, id, name: TOOL, argumentsDelta: argumentsJson },
+      { type: 'block-end', index, block: { type: 'tool-call', id, name: TOOL, arguments: argumentsJson } },
       { type: 'finish', reason: { kind: 'tool-calls' } },
     ]
     for (const chunk of chunks) {

@@ -33,6 +33,24 @@ const activationRequest = (): GenerateOptions => ({
 } as unknown as GenerateOptions)
 
 describe('FakeProviderAdapter', () => {
+  test('progress fixture streams separated activity and still makes exactly one fake call', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = new FakeProviderAdapter()
+      const chunks: any[] = []
+      const draining = (async () => { for await (const chunk of adapter.stream(request(undefined, 'progress'))) chunks.push(chunk) })()
+      await vi.advanceTimersByTimeAsync(3999)
+      expect(chunks).toHaveLength(0)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(chunks.some(chunk => chunk.type === 'reasoning-delta')).toBe(true)
+      expect(adapter.records).toHaveLength(0)
+      await vi.advanceTimersByTimeAsync(4000); await draining
+      expect(chunks.at(-1).reason.kind).toBe('tool-calls')
+      expect(chunks.find(chunk => chunk.type === 'tool-call-delta').index).toBe(1)
+      expect(adapter.records).toHaveLength(1)
+    } finally { vi.useRealTimers() }
+  })
+
   test('replays reasoning-only exhaustion without emitting a structured answer', async () => {
     const adapter = new FakeProviderAdapter()
     const chunks = []

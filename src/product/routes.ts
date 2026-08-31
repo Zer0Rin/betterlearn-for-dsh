@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
+import type { GenerationProgress } from '../generation-progress.js'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { CoreRpcError } from './core-rpc-client.js'
 import { GenerationBusyError, type GenerationLaunch } from './generation-coordinator.js'
@@ -26,7 +27,8 @@ import type {
 
 export interface ProductOperations {
   previewDocument(params: DocumentPreviewParams, signal?: AbortSignal): Promise<DocumentPreview>
-  watchRun(runId: string, onChange: () => void): () => void
+  watchRun(runId: string, onChange: (progress?: GenerationProgress) => void): () => void
+  getProgress(runId: string): GenerationProgress | null
   launchImport(params: ImportAndPrepareParams, signal?: AbortSignal): Promise<GenerationLaunch>
   getRun(runId: string, signal?: AbortSignal): Promise<CoreRunSnapshot>
   listEvents(runId: string, after: number, signal?: AbortSignal): Promise<EventList>
@@ -44,6 +46,7 @@ type RouteMatch =
   | { kind: 'preview'; method: 'POST' }
   | { kind: 'import'; method: 'POST' }
   | { kind: 'stream'; method: 'GET'; runId: string }
+  | { kind: 'progress'; method: 'GET'; runId: string }
   | { kind: 'run'; method: 'GET'; runId: string }
   | { kind: 'events'; method: 'GET'; runId: string; after: string | undefined; queryValid: boolean }
   | { kind: 'retry'; method: 'POST'; runId: string }
@@ -74,6 +77,8 @@ function matchRoute(url: URL): RouteMatch | undefined {
   if (match && url.search === '') return { kind: 'run', method: 'GET', runId: match[1] }
   match = /^\/nobei\/v1\/runs\/([^/]+)\/stream$/.exec(url.pathname)
   if (match && url.search === '') return { kind: 'stream', method: 'GET', runId: match[1] }
+  match = /^\/nobei\/v1\/runs\/([^/]+)\/progress$/.exec(url.pathname)
+  if (match && url.search === '') return { kind: 'progress', method: 'GET', runId: match[1] }
   match = /^\/nobei\/v1\/runs\/([^/]+)\/events$/.exec(url.pathname)
   if (match) {
     const entries = [...url.searchParams.entries()]
@@ -283,8 +288,10 @@ export function registerProductRoutes(
       if (supervisor.state !== 'READY') return sendError(res, 503, 'CORE_UNAVAILABLE')
       try {
         if (route.kind === 'stream') {
-          const notify = () => {
-            if (!res.destroyed && !res.writableEnded) res.write('event: run.changed\ndata: {}\n\n')
+          const notify = (progress?: GenerationProgress) => {
+            if (!res.destroyed && !res.writableEnded) res.write(progress
+              ? `event: run.progress\ndata: ${JSON.stringify(progress)}\n\n`
+              : 'event: run.changed\ndata: {}\n\n')
           }
           const unsubscribe = operations.watchRun(route.runId, notify)
           const close = () => {
@@ -301,12 +308,15 @@ export function registerProductRoutes(
           })
           // Refresh once on connection so an already-completed run is not missed.
           notify()
+          const progress = operations.getProgress(route.runId)
+          if (progress) notify(progress)
           return
         }
         let result: unknown
         if (route.kind === 'preview') result = await operations.previewDocument(previewParams as DocumentPreviewParams)
         else if (route.kind === 'import') result = await operations.launchImport(importParams as ImportAndPrepareParams)
         else if (route.kind === 'run') result = await operations.getRun(route.runId)
+        else if (route.kind === 'progress') result = operations.getProgress(route.runId)
         else if (route.kind === 'events') result = await operations.listEvents(route.runId, after as number)
         else if (route.kind === 'retry') result = await operations.launchRetry(retryParams as RetryAndPrepareParams)
         else if (route.kind === 'candidates') result = await operations.listCandidates(route.runId)

@@ -22,6 +22,29 @@ function text(status: RunStatus) {
 }
 
 describe('phase1d run progress', () => {
+  test('shows batch progress and actual response time, not a made-up heartbeat', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-31T08:00:00Z'))
+    const props = { run: run('generating'), busy: false, serviceUnavailable: false,
+      onRetry: vi.fn(), onReload: vi.fn(), onReset: vi.fn(),
+      progress: { phase: 'extracting' as const, completedBatches: 2, totalBatches: 4,
+        startedAt: Date.now() - 60000, lastResponseAt: null as number | null } }
+    let renderer!: ReturnType<typeof create>
+    act(() => { renderer = create(<RunProgress {...props} />) })
+    const content = () => renderer.root.findByProps({ 'data-testid': 'nobei-generation-detail' }).findAllByType('p').map(p => p.children.join('')).join(' ')
+    expect(content()).toContain('正在提取第 3 / 4 批')
+    expect(content()).toContain('尚未收到模型响应')
+    act(() => renderer.update(<RunProgress {...props} progress={{ ...props.progress, lastResponseAt: Date.now() }} />))
+    expect(content()).toContain('0 秒前')
+    act(() => vi.advanceTimersByTime(35000))
+    expect(content()).toContain('35 秒前')
+    expect(content()).toContain('暂未收到新数据')
+    act(() => renderer.update(<RunProgress {...props} progress={{ ...props.progress, totalBatches: null }} />))
+    expect(content()).toContain('总批数规划中')
+    act(() => renderer.update(<RunProgress {...props} run={run('failed_retryable')} />))
+    expect(renderer.root.findAllByProps({ 'data-testid': 'nobei-generation-detail' })).toHaveLength(0)
+    act(() => renderer.unmount()); expect(vi.getTimerCount()).toBe(0); vi.useRealTimers()
+  })
+
   test.each(['failed_retryable', 'failed_terminal'] as const)('explains the output limit in %s without starting another call', (status) => {
     const snapshot = run(status)
     snapshot.error = { code: 'GENERATION_OUTPUT_LIMIT', retryable: status === 'failed_retryable' }

@@ -65,6 +65,37 @@ function deferred<T>() {
 }
 
 describe('phase1d run polling', () => {
+  test('polls progress when SSE is silent and clears it at terminal without retrying', async () => {
+    const client = api(vi.fn().mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot('review_pending')), async () => page(0))
+    const p = { phase: 'extracting' as const, completedBatches: 2, totalBatches: 4, startedAt: 1, lastResponseAt: 2 }
+    client.getProgress = vi.fn(async () => p)
+    const progress = vi.fn()
+    await pollRun({ api: client, runId: 'job_1', after: 0, signal: new AbortController().signal,
+      scheduler: scheduler(), onUpdate: vi.fn(), onProgress: progress })
+    expect(progress.mock.calls.map(args => args[0])).toEqual([p, null])
+    expect(client.retryRun).not.toHaveBeenCalled()
+  })
+
+  test('a late fallback cannot overwrite SSE progress and callbacks stop after abort', async () => {
+    const controller = new AbortController()
+    const response = deferred<any>()
+    const client = api(async () => snapshot(), async () => page(0))
+    client.getProgress = () => response.promise
+    let pushed!: (p: any) => void
+    client.watchRun = (_id, _changed, cb) => { pushed = cb!; return vi.fn() }
+    const progress = vi.fn()
+    const polling = pollRun({ api: client, runId: 'job_1', after: 0, signal: controller.signal,
+      scheduler: scheduler({ abort: controller, abortAfterSleeps: 1 }), onUpdate: vi.fn(), onProgress: progress })
+    expect(pushed).toBeTypeOf('function')
+    const newer = { phase: 'extracting', completedBatches: 2, totalBatches: 4, startedAt: 1, lastResponseAt: 5 }
+    pushed(newer)
+    response.resolve({ ...newer, completedBatches: 1, lastResponseAt: 2 })
+    await polling
+    expect(progress).toHaveBeenCalledExactlyOnceWith(newer)
+    pushed(newer)
+    expect(progress).toHaveBeenCalledOnce()
+  })
+
   test('a change hint wakes a sleeping poller and closes the stream at review', async () => {
     let notify!: () => void
     const close = vi.fn()

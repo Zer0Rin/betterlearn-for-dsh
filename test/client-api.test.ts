@@ -47,6 +47,20 @@ describe('phase1d Client API', () => {
     stop()
   })
 
+  test('delivers progress separately from run changes and provides polling fallback', async () => {
+    const listeners: Record<string, (e: any) => void> = {}
+    vi.stubGlobal('EventSource', function () { return { addEventListener: (name: string, cb: any) => { listeners[name] = cb }, close: vi.fn() } })
+    const api = createClientApi(), changed = vi.fn(), progress = vi.fn()
+    const stop = api.watchRun!('job_1', changed, progress)
+    expect(listeners['run.progress']).toBeTypeOf('function')
+    listeners['run.progress']!({ data: JSON.stringify({ completedBatches: 2 }) })
+    expect(progress).toHaveBeenCalledWith({ completedBatches: 2 })
+    expect(changed).not.toHaveBeenCalled()
+    vi.stubGlobal('fetch', vi.fn(async () => success(null)))
+    expect(await api.getProgress!('job_1')).toBeNull()
+    stop()
+  })
+
   test('SSE is optional when EventSource is unavailable', () => {
     vi.stubGlobal('EventSource', undefined)
     expect(() => createClientApi().watchRun!('job_1', vi.fn())()).not.toThrow()

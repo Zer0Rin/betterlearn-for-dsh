@@ -82,6 +82,7 @@ export async function applyProductPlugin(
       ? supervisor.withReadyClient((client) => client.previewDocument(params, signal))
       : Promise.reject(new Error('CORE_UNAVAILABLE')),
     watchRun: (runId, onChange) => coordinator!.watchRun(runId, onChange),
+    getProgress: runId => coordinator!.getProgress(runId),
     launchImport: (params, signal) => coordinator
       ? coordinator.launchImport(params, signal)
       : Promise.reject(new Error('CORE_UNAVAILABLE')),

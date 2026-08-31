@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import type { GenerationProgress } from '../generation-progress.js'
 import {
   GENERATION_TIMEOUT_MS,
   MAX_ACTIVE_GENERATIONS,
@@ -67,7 +68,12 @@ export class GenerationCoordinator {
     return this.#flights.size + (this.#reserved ? 1 : 0)
   }
 
-  watchRun(runId: string, onChange: () => void): () => void {
+  getProgress(runId: string): GenerationProgress | null {
+    const flight = this.#flights.get(runId)
+    return flight && !flight.terminal ? flight.handle.progress ?? null : null
+  }
+
+  watchRun(runId: string, onChange: (progress?: GenerationProgress) => void): () => void {
     this.#changes.on(runId, onChange)
     return () => { this.#changes.off(runId, onChange) }
   }
@@ -146,7 +152,10 @@ export class GenerationCoordinator {
     const abort = new AbortController()
     let handle: GenerationHandle
     try {
-      handle = await this.adapter.start(prepared, abort.signal)
+      handle = await this.adapter.start(prepared, abort.signal, progress => {
+        const flight = this.#flights.get(prepared.runId)
+        if (flight && !flight.terminal) this.#changes.emit(prepared.runId, progress)
+      })
     } catch (error) {
       this.#reserved = false
       await this.#failUnlaunched(prepared)

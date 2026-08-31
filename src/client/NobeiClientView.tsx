@@ -52,7 +52,7 @@ export function NobeiWorkspace({
           error={operationError} onSubmit={workspace.importText} previewDocument={api.previewDocument}
           modelSelection={workspace.modelSelection} modelStatus={workspace.modelDirectoryStatus}
           ordinarySession={workspace.ordinarySession} />}
-        {workspace.screen === 'processing' && <RunProgress run={workspace.run} busy={workspace.busy}
+        {workspace.screen === 'processing' && <RunProgress run={workspace.run} progress={workspace.progress} busy={workspace.busy}
           serviceUnavailable={workspace.serviceUnavailable} message={workspace.message}
           previewDocument={api.previewDocument} onRetry={workspace.retry} onReload={workspace.reload} onReset={workspace.reset} />}
         {workspace.screen === 'review' && workspace.run && <ReviewWorkspace run={workspace.run}

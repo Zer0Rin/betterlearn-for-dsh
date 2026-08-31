@@ -69,7 +69,7 @@ export class ModelSelectionPropagation {
     this.#installOn(agentCtx, this.#parentDisposers, true)
   }
 
-  observeChildren(parent: Agent): void {
+  observeChildren(parent: Agent, onResponse?: (time: number) => void): void {
     if (this.#listenerDisposer) throw new Error('MODEL_SELECTION_PROPAGATION_MISMATCH')
     this.#listenerDisposer = this.ctx.on('agent/created', ({ agent: child }) => {
       if (!this.ctx.agents.isOwnedBy(child.id, parent)) return
@@ -77,6 +77,9 @@ export class ModelSelectionPropagation {
       this.#ownedChild = child
       try {
         this.#installOn(child.ctx, this.#childDisposers, false)
+        if (onResponse) this.#childDisposers.push(child.ctx.on('session/event', (session, event) => {
+          if (session.id === child.id && event.type === 'assistant/chunk') onResponse(event.time)
+        }))
       } catch {
         this.#installationFailed = true
       }

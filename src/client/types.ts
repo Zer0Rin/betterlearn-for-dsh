@@ -1,3 +1,4 @@
+import type { GenerationProgress } from '../generation-progress.js'
 export type KnowledgePointType = 'concept' | 'process' | 'comparison' | 'formula' | 'fact' | 'code'
 export type RunStatus =
   | 'generating'
@@ -138,7 +139,8 @@ export interface DocumentPreview extends ImportTextInput {
 
 export interface ClientApi {
   previewDocument?(input: DocumentPreviewRequest, signal?: AbortSignal): Promise<DocumentPreview>
-  watchRun?(runId: string, onChange: () => void): () => void
+  watchRun?(runId: string, onChange: () => void, onProgress?: (progress: GenerationProgress) => void): () => void
+  getProgress?(runId: string, signal?: AbortSignal): Promise<GenerationProgress | null>
   importText(input: ImportTextRequest, signal?: AbortSignal): Promise<GenerationLaunch>
   getRun(runId: string, signal?: AbortSignal): Promise<RunSnapshot>
   listEvents(runId: string, after: number, signal?: AbortSignal): Promise<EventPage>

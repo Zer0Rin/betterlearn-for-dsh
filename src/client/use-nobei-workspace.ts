@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { GenerationProgress } from '../generation-progress.js'
 import { ProductApiError } from './client-api.js'
 import {
   ModelDirectoryBridgeError,
@@ -34,6 +35,7 @@ type ImportLaunch = Awaited<ReturnType<ClientApi['importText']>>
 const pendingImports = new Map<string, Promise<ImportLaunch>>()
 
 export interface WorkspaceController {
+  progress?: GenerationProgress | null
   screen: WorkspaceScreen
   run?: RunSnapshot
   events: RunEvent[]
@@ -107,6 +109,7 @@ export function useNobeiWorkspace(options: {
   const initial = useMemo(() => readSessionState(storage, sessionId), [storage, sessionId])
   const [screen, setScreen] = useState<WorkspaceScreen>(initial.runId ? 'processing' : 'import')
   const [run, setRun] = useState<RunSnapshot>()
+  const [progress, setProgress] = useState<GenerationProgress | null>(null)
   const [events, setEvents] = useState<RunEvent[]>([])
   const [candidates, setCandidates] = useState<CandidateSnapshot[]>([])
   const [knowledgePoints, setKnowledgePoints] = useState<KnowledgePointSnapshot[]>([])
@@ -244,10 +247,14 @@ export function useNobeiWorkspace(options: {
 
   const startPoll = useCallback((runId: string, after: number) => {
     pollController.current?.abort()
+    setProgress(null)
     const controller = new AbortController()
     pollController.current = controller
     void pollRun({
       api, runId, after, signal: controller.signal, scheduler,
+      onProgress(progress) {
+        if (!controller.signal.aborted && pollController.current === controller) setProgress(progress)
+      },
       onUpdate(update) {
         if (controller.signal.aborted || pollController.current !== controller) return
         setRun(update.run)
@@ -396,6 +403,7 @@ export function useNobeiWorkspace(options: {
     writeSessionState(storage, sessionId, { version: 1, lastEventSeq: 0 })
     setScreen('import')
     setRun(undefined)
+    setProgress(null)
     setEvents([])
     setCandidates([])
     setKnowledgePoints([])
@@ -533,7 +541,7 @@ export function useNobeiWorkspace(options: {
   }
 
   return {
-    screen, run, events, candidates, knowledgePoints, busy, activeCandidateId,
+    screen, run, progress, events, candidates, knowledgePoints, busy, activeCandidateId,
     submittingCandidateId, serviceUnavailable, message, modelSelection,
     modelDirectoryStatus, ordinarySession, importText, retry, reload,
     selectCandidate: setActiveCandidateId, review, reset,

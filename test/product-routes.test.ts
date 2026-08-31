@@ -23,6 +23,7 @@ function operations(override: Partial<ProductOperations> = {}): ProductOperation
   return {
     previewDocument: vi.fn(async params => ({ ...params, text: 'preview', byteSize: 7, characterCount: 7, pages: [], extractionPlan: { strategy: 'L1', blocks: [], containers: [], boundaries: [], maxCalls: 1 } })) as any,
     watchRun: vi.fn(() => vi.fn()),
+    getProgress: vi.fn(() => null),
     launchImport: vi.fn(async () => ({ runId, attemptId: `att_${'d'.repeat(20)}`, revision: 2 })),
     getRun: vi.fn(async () => ({ runId, documentId: `doc_${'e'.repeat(20)}`, status: 'generating', stage: 'extract', revision: 2, retryCount: 0, lastEventSeq: 2 })),
     listEvents: vi.fn(async () => ({ events: [], nextAfter: 0 })),
@@ -85,6 +86,7 @@ async function send(port: number, input: {
 
 const routes = [
   { key: 'launchImport', method: 'POST', path: '/nobei/v1/imports', body: JSON.stringify({ filename: 'lesson.md', mediaType: 'text/markdown', text: '# Lesson', modelSelection }), status: 202 },
+  { key: 'getProgress', method: 'GET', path: `/nobei/v1/runs/${runId}/progress`, status: 200 },
   { key: 'getRun', method: 'GET', path: `/nobei/v1/runs/${runId}`, status: 200 },
   { key: 'listEvents', method: 'GET', path: `/nobei/v1/runs/${runId}/events?after=0`, status: 200 },
   { key: 'launchRetry', method: 'POST', path: `/nobei/v1/runs/${runId}/retry`, body: JSON.stringify({ expectedRevision: 6 }), status: 202 },
@@ -96,6 +98,24 @@ const routes = [
 const states: CoreState[] = ['STARTING', 'READY', 'RESTARTING', 'DEGRADED', 'DISPOSING', 'DISPOSED']
 
 describe('product route table', () => {
+  test('sends the current progress on reconnect and pushes updates without reading Core', async () => {
+    const p = { phase: 'extracting', completedBatches: 2, totalBatches: 4, startedAt: 1, lastResponseAt: 2 }
+    let notify!: (p?: any) => void
+    const ops = operations({ getProgress: vi.fn(() => p as any), watchRun: vi.fn((_id, cb) => { notify = cb; return vi.fn() }) })
+    const { port, dispose } = await listen('READY', ops)
+    const response = await fetch(`http://127.0.0.1:${port}/nobei/v1/runs/${runId}/stream`, { headers: { origin: `http://127.0.0.1:${port}` } })
+    const reader = response.body!.getReader()
+    try {
+      const first = new TextDecoder().decode((await reader.read()).value)
+      expect(first).toContain('event: run.changed')
+      expect(first).toContain(`event: run.progress\ndata: ${JSON.stringify(p)}`)
+      notify({ ...p, lastResponseAt: 3 })
+      expect(new TextDecoder().decode((await reader.read()).value)).toContain('"lastResponseAt":3')
+      expect(ops.getRun).not.toHaveBeenCalled()
+      expect((await send(port, { method: 'GET', path: `/nobei/v1/runs/${runId}/progress` })).body.result).toEqual(p)
+    } finally { await reader.cancel(); dispose() }
+  })
+
   test.each(['disconnect', 'dispose'])('streams hints without reading Core and cleans up on %s', async ending => {
     let notify!: () => void
     const unsubscribe = vi.fn()
