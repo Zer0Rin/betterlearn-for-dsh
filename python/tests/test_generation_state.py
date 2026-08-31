@@ -50,10 +50,9 @@ def _prepare_first(core: Phase1Core, run_id: str) -> dict[str, object]:
 
 def _sql_state(database) -> dict[str, list[dict[str, object]]]:
     queries = {
-        "p1_run_control": "SELECT * FROM p1_run_control ORDER BY rowid",
-        "import_jobs": "SELECT * FROM import_jobs ORDER BY rowid",
-        "p1_generation_attempts": "SELECT * FROM p1_generation_attempts ORDER BY rowid",
-        "p1_run_events": "SELECT * FROM p1_run_events ORDER BY rowid",
+        "runs": "SELECT * FROM runs ORDER BY rowid",
+        "generation_attempts": "SELECT * FROM generation_attempts ORDER BY rowid",
+        "run_events": "SELECT * FROM run_events ORDER BY rowid",
     }
     with database.read_snapshot() as connection:
         return {
@@ -84,7 +83,7 @@ def test_atomic_prepare_persists_and_returns_closed_model_selection(
 ):
     prepared = core.import_and_prepare_generation(_atomic_import_params())
     stored = database.scalar(
-        "SELECT model_metadata_json FROM p1_generation_attempts WHERE id=?",
+        "SELECT model_metadata_json FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     )
 
@@ -148,7 +147,7 @@ def test_retry_copies_attempt_one_model_and_finalize_cannot_rewrite_it(
     )
     assert second["modelSelection"] == MODEL
     assert json.loads(database.scalar(
-        "SELECT model_metadata_json FROM p1_generation_attempts WHERE id=?",
+        "SELECT model_metadata_json FROM generation_attempts WHERE id=?",
         (second["attemptId"],),
     )) == MODEL
 
@@ -247,12 +246,12 @@ def test_prepare_generation_returns_exact_deterministic_request(core: Phase1Core
     assert re.fullmatch(r"[0-9a-f]{64}", str(prepared["requestDigest"]))
     assert prepared["providerIdempotencyKey"] == "nobei:" + expected_digest
     assert database.one(
-        "SELECT job_id,attempt_number,request_digest,provider_idempotency_key,"
+        "SELECT run_id,attempt_number,request_digest,provider_idempotency_key,"
         "model_metadata_json,status,error_code,completed_at "
-        "FROM p1_generation_attempts WHERE id=?",
+        "FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == {
-        "job_id": run_id,
+        "run_id": run_id,
         "attempt_number": 1,
         "request_digest": expected_digest,
         "provider_idempotency_key": "nobei:" + expected_digest,
@@ -308,7 +307,7 @@ def test_first_attempt_failure_accepts_each_closed_code_as_retryable(
     assert result["error"] == {"code": code, "retryable": True}
     attempt = database.one(
         "SELECT status,error_code,model_metadata_json,completed_at "
-        "FROM p1_generation_attempts WHERE id=?",
+        "FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     )
     assert attempt == {
@@ -321,7 +320,7 @@ def test_first_attempt_failure_accepts_each_closed_code_as_retryable(
     }
     assert attempt["completed_at"] is not None
     assert database.one(
-        "SELECT retry_count,error_code,error_detail FROM p1_run_control WHERE job_id=?",
+        "SELECT retry_count,error_code,error_detail FROM runs WHERE id=?",
         (run_id,),
     ) == {"retry_count": 0, "error_code": code, "error_detail": None}
     assert core.list_events({"runId": run_id, "after": 4})["events"] == [
@@ -345,7 +344,7 @@ def test_retry_budget_is_explicit_and_attempt_two_failure_is_terminal(
     first = _prepare_first(core, run_id)
     failed_first = _fail(core, run_id, str(first["attemptId"]), int(first["revision"]))
     assert database.scalar(
-        "SELECT retry_count FROM p1_run_control WHERE job_id=?", (run_id,)
+        "SELECT retry_count FROM runs WHERE id=?", (run_id,)
     ) == 0
 
     retried = core.retry(
@@ -355,7 +354,7 @@ def test_retry_budget_is_explicit_and_attempt_two_failure_is_terminal(
     assert retried["status"] == "awaiting_generation"
     assert retried["revision"] == 4
     assert database.scalar(
-        "SELECT retry_count FROM p1_run_control WHERE job_id=?", (run_id,)
+        "SELECT retry_count FROM runs WHERE id=?", (run_id,)
     ) == 1
     assert core.list_events({"runId": run_id, "after": 5})["events"] == [
         {
@@ -383,7 +382,7 @@ def test_retry_budget_is_explicit_and_attempt_two_failure_is_terminal(
         "retryable": False,
     }
     assert database.scalar(
-        "SELECT retry_count FROM p1_run_control WHERE job_id=?", (run_id,)
+        "SELECT retry_count FROM runs WHERE id=?", (run_id,)
     ) == 1
 
     before = _sql_state(database)
@@ -494,15 +493,12 @@ def test_fail_generation_conflicts_never_mutate_sql(core: Phase1Core, database):
 
     with database.write_transaction() as connection:
         connection.execute(
-            "UPDATE p1_run_control SET status='completed',stage='done',revision=revision+1 "
-            "WHERE job_id=?",
+            "UPDATE runs SET status='completed',stage='done',revision=revision+1 "
+            "WHERE id=?",
             (run_a,),
         )
-        connection.execute(
-            "UPDATE import_jobs SET stage='done',status='done' WHERE id=?", (run_a,)
-        )
     completed_revision = int(
-        database.scalar("SELECT revision FROM p1_run_control WHERE job_id=?", (run_a,))
+        database.scalar("SELECT revision FROM runs WHERE id=?", (run_a,))
     )
     before_terminal = _sql_state(database)
     with pytest.raises(CoreProblem) as caught_terminal:

@@ -11,6 +11,8 @@ import {
   requestHasBody,
 } from './request-security.js'
 import type {
+  DocumentPreview,
+  DocumentPreviewParams,
   CandidateList,
   CoreObjectResult,
   CoreRunSnapshot,
@@ -23,6 +25,8 @@ import type {
 } from './types.js'
 
 export interface ProductOperations {
+  previewDocument(params: DocumentPreviewParams, signal?: AbortSignal): Promise<DocumentPreview>
+  watchRun(runId: string, onChange: () => void): () => void
   launchImport(params: ImportAndPrepareParams, signal?: AbortSignal): Promise<GenerationLaunch>
   getRun(runId: string, signal?: AbortSignal): Promise<CoreRunSnapshot>
   listEvents(runId: string, after: number, signal?: AbortSignal): Promise<EventList>
@@ -37,7 +41,9 @@ interface SupervisorState {
 }
 
 type RouteMatch =
+  | { kind: 'preview'; method: 'POST' }
   | { kind: 'import'; method: 'POST' }
+  | { kind: 'stream'; method: 'GET'; runId: string }
   | { kind: 'run'; method: 'GET'; runId: string }
   | { kind: 'events'; method: 'GET'; runId: string; after: string | undefined; queryValid: boolean }
   | { kind: 'retry'; method: 'POST'; runId: string }
@@ -62,9 +68,12 @@ function sendError(res: ServerResponse, status: number, code: string, extra?: Re
 }
 
 function matchRoute(url: URL): RouteMatch | undefined {
+  if (url.pathname === '/nobei/v1/documents/preview' && url.search === '') return { kind: 'preview', method: 'POST' }
   if (url.pathname === '/nobei/v1/imports' && url.search === '') return { kind: 'import', method: 'POST' }
   let match = /^\/nobei\/v1\/runs\/([^/]+)$/.exec(url.pathname)
   if (match && url.search === '') return { kind: 'run', method: 'GET', runId: match[1] }
+  match = /^\/nobei\/v1\/runs\/([^/]+)\/stream$/.exec(url.pathname)
+  if (match && url.search === '') return { kind: 'stream', method: 'GET', runId: match[1] }
   match = /^\/nobei\/v1\/runs\/([^/]+)\/events$/.exec(url.pathname)
   if (match) {
     const entries = [...url.searchParams.entries()]
@@ -120,9 +129,9 @@ function parseImport(value: unknown): ImportAndPrepareParams | undefined {
   if (
     typeof filename !== 'string' || filename.length < 1 || filename.length > 255
     || filename === '.' || filename === '..' || /[\\/\0]/.test(filename)
-    || (mediaType !== 'text/plain' && mediaType !== 'text/markdown')
+    || (mediaType !== 'text/plain' && mediaType !== 'text/markdown' && mediaType !== 'application/pdf')
     || typeof text !== 'string' || text.length === 0
-    || Buffer.byteLength(text, 'utf8') > 65_536
+    || Buffer.byteLength(text, 'utf8') > 512 * 1024
     || (selectionKeys !== 'model,provider' && selectionKeys !== 'model,provider,reasoningEffort')
     || !validModelText(selection.provider, 64)
     || !validModelText(selection.model, 128)
@@ -140,6 +149,21 @@ function parseImport(value: unknown): ImportAndPrepareParams | undefined {
         : {}),
     },
   }
+}
+
+function parsePreview(value: unknown): DocumentPreviewParams | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const input = value as Record<string, unknown>
+  const { filename, mediaType, text, contentBase64 } = input
+  if (typeof filename !== 'string' || filename.length < 1 || filename.length > 255
+    || filename === '.' || filename === '..' || /[\\/\0]/.test(filename)) return undefined
+  if (mediaType === 'application/pdf' && exactObject(input, ['filename', 'mediaType', 'contentBase64'])
+    && typeof contentBase64 === 'string' && contentBase64.length > 0
+    && contentBase64.length <= 4 * Math.ceil(5 * 1024 * 1024 / 3)) return { filename, mediaType, contentBase64 }
+  if (exactObject(input, ['filename', 'mediaType', 'text'])
+    && (mediaType === 'text/plain' || mediaType === 'text/markdown' || mediaType === 'application/pdf')
+    && typeof text === 'string' && text.length > 0 && Buffer.byteLength(text, 'utf8') <= 512 * 1024) return { filename, mediaType, text }
+  return undefined
 }
 
 function parseRetry(value: unknown, runId: string): RetryAndPrepareParams | undefined {
@@ -189,7 +213,7 @@ function publicCoreError(error: CoreRpcError): { status: number; code: string } 
   if (error.code.includes('CONFLICT') || error.code === 'RUN_STATE_CONFLICT') {
     return { status: 409, code: error.code }
   }
-  if (error.code.startsWith('INVALID_') || error.code === 'REQUEST_TOO_LARGE') {
+  if (error.code.startsWith('INVALID_') || error.code === 'REQUEST_TOO_LARGE' || error.code.startsWith('PDF_') || error.code.startsWith('DOCUMENT_')) {
     return { status: 400, code: error.code }
   }
   return { status: 500, code: 'INTERNAL_ERROR' }
@@ -200,7 +224,8 @@ export function registerProductRoutes(
   supervisor: SupervisorState,
   operations: ProductOperations,
 ): () => void {
-  return ctx.webServer.register({
+  const streams = new Set<() => void>()
+  const unregister = ctx.webServer.register({
     kind: 'prefix',
     path: '/nobei/v1',
     handler: async (req, res) => {
@@ -244,19 +269,43 @@ export function registerProductRoutes(
       if (route.kind === 'events' && (!Number.isSafeInteger(after) || (after as number) < 0)) {
         return sendError(res, 400, 'REQUEST_INPUT_INVALID')
       }
+      const previewParams = route.kind === 'preview' ? parsePreview(body) : undefined
       const importParams = route.kind === 'import' ? parseImport(body) : undefined
       const retryParams = route.kind === 'retry' ? parseRetry(body, route.runId) : undefined
       const reviewParams = route.kind === 'review' ? parseReview(body, route.candidateId) : undefined
       if (
-        (route.kind === 'import' && !importParams)
+        (route.kind === 'preview' && !previewParams)
+        || (route.kind === 'import' && !importParams)
         || (route.kind === 'retry' && !retryParams)
         || (route.kind === 'review' && !reviewParams)
       ) return sendError(res, 400, 'REQUEST_INPUT_INVALID')
 
       if (supervisor.state !== 'READY') return sendError(res, 503, 'CORE_UNAVAILABLE')
       try {
+        if (route.kind === 'stream') {
+          const notify = () => {
+            if (!res.destroyed && !res.writableEnded) res.write('event: run.changed\ndata: {}\n\n')
+          }
+          const unsubscribe = operations.watchRun(route.runId, notify)
+          const close = () => {
+            unsubscribe()
+            streams.delete(close)
+            res.off('close', close)
+            res.end()
+          }
+          streams.add(close)
+          res.once('close', close)
+          res.writeHead(200, {
+            'content-type': 'text/event-stream; charset=utf-8',
+            'cache-control': 'no-store',
+          })
+          // Refresh once on connection so an already-completed run is not missed.
+          notify()
+          return
+        }
         let result: unknown
-        if (route.kind === 'import') result = await operations.launchImport(importParams as ImportAndPrepareParams)
+        if (route.kind === 'preview') result = await operations.previewDocument(previewParams as DocumentPreviewParams)
+        else if (route.kind === 'import') result = await operations.launchImport(importParams as ImportAndPrepareParams)
         else if (route.kind === 'run') result = await operations.getRun(route.runId)
         else if (route.kind === 'events') result = await operations.listEvents(route.runId, after as number)
         else if (route.kind === 'retry') result = await operations.launchRetry(retryParams as RetryAndPrepareParams)
@@ -280,4 +329,8 @@ export function registerProductRoutes(
       }
     },
   })
+  return () => {
+    unregister()
+    for (const close of streams) close()
+  }
 }

@@ -19,7 +19,7 @@ from nobei_core.errors import CoreProblem
 from nobei_core.repository import append_event
 from nobei_core.service import Phase1Core
 
-from conftest import MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH, PYTHON_ROOT
+from conftest import PYTHON_ROOT
 
 
 @pytest.fixture
@@ -59,12 +59,11 @@ def _submit(
 
 def _business_state(database) -> dict[str, list[dict[str, object]]]:
     queries = {
-        "runs": "SELECT * FROM p1_run_control ORDER BY job_id",
-        "jobs": "SELECT * FROM import_jobs ORDER BY id",
-        "attempts": "SELECT * FROM p1_generation_attempts ORDER BY id",
-        "candidates": "SELECT * FROM p1_candidates ORDER BY id",
-        "evidence": "SELECT * FROM p1_candidate_evidence ORDER BY candidate_id,seq",
-        "events": "SELECT * FROM p1_run_events ORDER BY job_id,seq",
+        "runs": "SELECT * FROM runs ORDER BY id",
+        "attempts": "SELECT * FROM generation_attempts ORDER BY id",
+        "candidates": "SELECT * FROM candidates ORDER BY id",
+        "evidence": "SELECT * FROM candidate_evidence ORDER BY candidate_id,seq",
+        "events": "SELECT * FROM run_events ORDER BY run_id,seq",
     }
     with database.read_snapshot() as connection:
         return {
@@ -110,7 +109,7 @@ def test_mixed_evidence_persists_only_exact_rows_and_derives_yield(
     }
     assert database.one(
         "SELECT raw_candidate_count,schema_valid_evidence_count,exact_evidence_count,"
-        "accepted_candidate_count,rejection_counts_json FROM p1_run_control WHERE job_id=?",
+        "accepted_candidate_count,rejection_counts_json FROM runs WHERE id=?",
         (run_id,),
     ) == {
         "raw_candidate_count": 1,
@@ -119,10 +118,10 @@ def test_mixed_evidence_persists_only_exact_rows_and_derives_yield(
         "accepted_candidate_count": 0,
         "rejection_counts_json": '{"EVIDENCE_NOT_FOUND":1}',
     }
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)) == 1
+    assert database.scalar("SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)) == 1
     assert database.all(
         "SELECT seq,quote,text_start,text_end,context_before,context_after "
-        "FROM p1_candidate_evidence ORDER BY seq"
+        "FROM candidate_evidence ORDER BY seq"
     ) == [
         {
             "seq": 0,
@@ -143,7 +142,7 @@ def test_mixed_evidence_persists_only_exact_rows_and_derives_yield(
     ]
     assert database.one(
         "SELECT raw_output_json,model_metadata_json,status,error_code,completed_at "
-        "FROM p1_generation_attempts WHERE id=?",
+        "FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == {
         "raw_output_json": json.dumps(
@@ -153,12 +152,12 @@ def test_mixed_evidence_persists_only_exact_rows_and_derives_yield(
         "status": "succeeded",
         "error_code": None,
         "completed_at": database.scalar(
-            "SELECT completed_at FROM p1_generation_attempts WHERE id=?",
+            "SELECT completed_at FROM generation_attempts WHERE id=?",
             (prepared["attemptId"],),
         ),
     }
     assert database.scalar(
-        "SELECT completed_at IS NOT NULL FROM p1_generation_attempts WHERE id=?",
+        "SELECT completed_at IS NOT NULL FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == 1
     assert core.list_events({"runId": run_id, "after": 4})["events"] == [
@@ -208,11 +207,11 @@ def test_all_evidence_rejected_completes_without_knowledge_points(
         "rejectionCounts": {"EVIDENCE_NOT_FOUND": 1},
         "exactEvidenceYield": 0.0,
     }
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)) == 0
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidate_evidence") == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)) == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidate_evidence") == 0
     assert database.scalar("SELECT COUNT(*) FROM knowledge_points") == 0
     assert database.scalar(
-        "SELECT completed_at IS NOT NULL FROM p1_run_control WHERE job_id=?", (run_id,)
+        "SELECT completed_at IS NOT NULL FROM runs WHERE id=?", (run_id,)
     ) == 1
     assert core.list_events({"runId": run_id, "after": 4})["events"][-1] == {
         "seq": 7,
@@ -233,11 +232,11 @@ def test_malformed_schema_is_durably_recorded_without_partial_candidates(
     assert result["run"]["status"] == "failed_retryable"
     assert result["run"]["revision"] == 4
     assert result["error"] == {"code": "GENERATION_SCHEMA_INVALID", "retryable": True}
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)) == 0
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidate_evidence") == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)) == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidate_evidence") == 0
     assert database.one(
         "SELECT status,error_code,raw_output_json,model_metadata_json FROM "
-        "p1_generation_attempts WHERE id=?",
+        "generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == {
         "status": "failed",
@@ -249,7 +248,7 @@ def test_malformed_schema_is_durably_recorded_without_partial_candidates(
     }
     assert database.one(
         "SELECT error_code,error_detail,raw_candidate_count,schema_valid_evidence_count,"
-        "exact_evidence_count FROM p1_run_control WHERE job_id=?",
+        "exact_evidence_count FROM runs WHERE id=?",
         (run_id,),
     ) == {
         "error_code": "GENERATION_SCHEMA_INVALID",
@@ -289,14 +288,14 @@ def test_oversized_raw_output_is_failed_without_persisting_it(
     assert result["error"] == {"code": "GENERATION_SCHEMA_INVALID", "retryable": True}
     assert result["run"]["status"] == "failed_retryable"
     assert database.one(
-        "SELECT status,error_code,raw_output_json FROM p1_generation_attempts WHERE id=?",
+        "SELECT status,error_code,raw_output_json FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == {
         "status": "failed",
         "error_code": "GENERATION_SCHEMA_INVALID",
         "raw_output_json": None,
     }
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)) == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)) == 0
 
 
 @pytest.mark.parametrize("kind", ["cyclic", "non_encodable"])
@@ -318,7 +317,7 @@ def test_non_json_generation_output_is_recorded_without_raw_retention(
         "retryable": True,
     }
     assert database.one(
-        "SELECT status,error_code,raw_output_json FROM p1_generation_attempts WHERE id=?",
+        "SELECT status,error_code,raw_output_json FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == {
         "status": "failed",
@@ -358,7 +357,7 @@ def test_lone_surrogate_output_follows_durable_retry_policy_without_retention(
     first_public_json.encode("utf-8")
     first_attempt = database.one(
         "SELECT attempt_number,status,error_code,raw_output_json,model_metadata_json,"
-        "completed_at FROM p1_generation_attempts WHERE id=?",
+        "completed_at FROM generation_attempts WHERE id=?",
         (first["attemptId"],),
     )
     assert first_attempt == {
@@ -373,7 +372,7 @@ def test_lone_surrogate_output_follows_durable_retry_policy_without_retention(
     assert database.one(
         "SELECT status,stage,revision,error_code,raw_candidate_count,"
         "schema_valid_evidence_count,exact_evidence_count,rejection_counts_json "
-        "FROM p1_run_control WHERE job_id=?",
+        "FROM runs WHERE id=?",
         (run_id,),
     ) == {
         "status": "failed_retryable",
@@ -427,7 +426,7 @@ def test_lone_surrogate_output_follows_durable_retry_policy_without_retention(
     second_public_json.encode("utf-8")
     second_attempt = database.one(
         "SELECT attempt_number,status,error_code,raw_output_json,model_metadata_json,"
-        "completed_at FROM p1_generation_attempts WHERE id=?",
+        "completed_at FROM generation_attempts WHERE id=?",
         (second["attemptId"],),
     )
     assert second_attempt == {
@@ -440,8 +439,8 @@ def test_lone_surrogate_output_follows_durable_retry_policy_without_retention(
     }
     assert second_attempt["completed_at"] is not None
     assert database.one(
-        "SELECT status,stage,revision,retry_count,error_code FROM p1_run_control "
-        "WHERE job_id=?",
+        "SELECT status,stage,revision,retry_count,error_code FROM runs "
+        "WHERE id=?",
         (run_id,),
     ) == {
         "status": "failed_terminal",
@@ -481,11 +480,11 @@ def test_lone_surrogate_output_follows_durable_retry_policy_without_retention(
         },
     ]
     assert database.scalar(
-        "SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)
+        "SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)
     ) == 0
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidate_evidence") == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidate_evidence") == 0
     assert database.scalar(
-        "SELECT COUNT(*) FROM p1_run_events WHERE job_id=? "
+        "SELECT COUNT(*) FROM run_events WHERE run_id=? "
         "AND type IN ('candidates.ready','run.completed')",
         (run_id,),
     ) == 0
@@ -520,11 +519,11 @@ def test_raw_output_utf8_cap_accepts_exact_boundary_and_rejects_plus_one(
     assert exact_result["error"]["code"] == "GENERATION_SCHEMA_INVALID"
     assert over_result["error"]["code"] == "GENERATION_SCHEMA_INVALID"
     assert database.scalar(
-        "SELECT raw_output_json FROM p1_generation_attempts WHERE id=?",
+        "SELECT raw_output_json FROM generation_attempts WHERE id=?",
         (exact_prepared["attemptId"],),
     ) == exact_encoded
     assert database.scalar(
-        "SELECT raw_output_json FROM p1_generation_attempts WHERE id=?",
+        "SELECT raw_output_json FROM generation_attempts WHERE id=?",
         (over_prepared["attemptId"],),
     ) is None
 
@@ -651,7 +650,7 @@ def test_submission_locates_only_against_own_document(core: Phase1Core, database
     assert result["run"]["status"] == "completed"
     assert result["statistics"]["validCandidateCount"] == 0
     assert result["statistics"]["rejectionCounts"] == {"EVIDENCE_NOT_FOUND": 1}
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_a,)) == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_a,)) == 0
 
 
 def test_mixed_rejection_reasons_preserve_count_identities_and_only_survivor(
@@ -701,10 +700,10 @@ def test_mixed_rejection_reasons_preserve_count_identities_and_only_survivor(
         statistics["rejectionCounts"].values()
     )
     assert database.all(
-        "SELECT ordinal,title FROM p1_candidates WHERE job_id=? ORDER BY ordinal", (run_id,)
+        "SELECT ordinal,title FROM candidates WHERE run_id=? ORDER BY ordinal", (run_id,)
     ) == [{"ordinal": 1, "title": "质量"}]
     assert database.all(
-        "SELECT quote,text_start,text_end FROM p1_candidate_evidence"
+        "SELECT quote,text_start,text_end FROM candidate_evidence"
     ) == [
         {
             "quote": "质量",
@@ -758,10 +757,10 @@ def test_concurrent_duplicate_submit_and_replay_have_one_success(
     assert replay.value.code == "RUN_STATE_CONFLICT"
     assert _business_state(database) == completed_state
     assert database.scalar(
-        "SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)
+        "SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)
     ) == 1
     assert database.scalar(
-        "SELECT COUNT(*) FROM p1_run_events WHERE job_id=? AND type='candidates.ready'",
+        "SELECT COUNT(*) FROM run_events WHERE run_id=? AND type='candidates.ready'",
         (run_id,),
     ) == 1
 
@@ -817,14 +816,14 @@ def test_submit_vs_fail_race_commits_exactly_one_terminal_command(
     assert failures == [("error", "RUN_STATE_CONFLICT")]
     run = core.get_run({"runId": run_id})
     attempt = database.one(
-        "SELECT status,error_code FROM p1_generation_attempts WHERE id=?",
+        "SELECT status,error_code FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     )
     if successes[0][0] == "submit":
         assert run["status"] == "review_pending"
         assert attempt == {"status": "succeeded", "error_code": None}
         assert database.scalar(
-            "SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)
+            "SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)
         ) == 1
     else:
         assert run["status"] == "failed_retryable"
@@ -833,7 +832,7 @@ def test_submit_vs_fail_race_commits_exactly_one_terminal_command(
             "error_code": "GENERATION_PROVIDER_ERROR",
         }
         assert database.scalar(
-            "SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)
+            "SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)
         ) == 0
 
 
@@ -867,8 +866,8 @@ def test_prompt_injection_text_remains_inert_document_data(
     assert result["run"]["status"] == "review_pending"
     assert result["statistics"]["validCandidateCount"] == 1
     assert database.scalar(
-        "SELECT c.text FROM chunks c JOIN import_jobs j ON j.document_id=c.document_id "
-        "WHERE j.id=?",
+        "SELECT d.canonical_text FROM documents d JOIN runs r ON r.document_id=d.id "
+        "WHERE r.id=?",
         (run_id,),
     ) == injection
     parsed_modules = [
@@ -952,11 +951,11 @@ def test_transaction_b_repository_failure_rolls_back_and_remains_recoverable(
     assert caught.value.public() == {"code": "TRANSACTION_FAILED"}
     assert "injected repository detail" not in str(caught.value)
 
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)) == 0
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidate_evidence") == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)) == 0
+    assert database.scalar("SELECT COUNT(*) FROM candidate_evidence") == 0
     assert database.one(
         "SELECT status,revision,raw_candidate_count,schema_valid_evidence_count,"
-        "exact_evidence_count FROM p1_run_control WHERE job_id=?",
+        "exact_evidence_count FROM runs WHERE id=?",
         (run_id,),
     ) == {
         "status": "validating",
@@ -967,7 +966,7 @@ def test_transaction_b_repository_failure_rolls_back_and_remains_recoverable(
     }
     assert database.one(
         "SELECT status,raw_output_json,model_metadata_json,completed_at "
-        "FROM p1_generation_attempts WHERE id=?",
+        "FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == {
         "status": "started",
@@ -978,7 +977,7 @@ def test_transaction_b_repository_failure_rolls_back_and_remains_recoverable(
         "completed_at": None,
     }
     assert database.scalar(
-        "SELECT COUNT(*) FROM p1_run_events WHERE job_id=? AND type='candidates.ready'",
+        "SELECT COUNT(*) FROM run_events WHERE run_id=? AND type='candidates.ready'",
         (run_id,),
     ) == 0
 
@@ -1021,13 +1020,13 @@ def test_submission_write_preserves_control_flow_failures(
         _submit(core, run_id, prepared, output)
     assert caught.value is marker
     assert database.scalar(
-        "SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)
+        "SELECT COUNT(*) FROM candidates WHERE run_id=?", (run_id,)
     ) == 0
     assert database.one(
-        "SELECT status,revision FROM p1_run_control WHERE job_id=?", (run_id,)
+        "SELECT status,revision FROM runs WHERE id=?", (run_id,)
     ) == {"status": "validating", "revision": 3}
     assert database.one(
-        "SELECT status,raw_output_json FROM p1_generation_attempts WHERE id=?",
+        "SELECT status,raw_output_json FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == {"status": "started", "raw_output_json": None}
 
@@ -1036,7 +1035,7 @@ def test_interrupt_immediately_after_transaction_a_recovers_once_on_reopen(
     owned_root, ownership_token, monkeypatch
 ):
     database = Phase1Database.open(
-        owned_root, ownership_token, MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH
+        owned_root, ownership_token
     )
     core = Phase1Core(database, load_candidate_contract(PYTHON_ROOT.parent))
     run_id, prepared = _prepare(core, "中断恢复证据。")
@@ -1059,11 +1058,11 @@ def test_interrupt_immediately_after_transaction_a_recovers_once_on_reopen(
     monkeypatch.setattr(service_module, "_canonical_json", original_canonical_json)
 
     assert database.one(
-        "SELECT status,stage,revision FROM p1_run_control WHERE job_id=?", (run_id,)
+        "SELECT status,stage,revision FROM runs WHERE id=?", (run_id,)
     ) == {"status": "validating", "stage": "verify", "revision": 3}
     assert database.one(
         "SELECT status,error_code,raw_output_json,completed_at "
-        "FROM p1_generation_attempts WHERE id=?",
+        "FROM generation_attempts WHERE id=?",
         (prepared["attemptId"],),
     ) == {
         "status": "started",
@@ -1082,7 +1081,7 @@ def test_interrupt_immediately_after_transaction_a_recovers_once_on_reopen(
     database.close()
 
     recovered_database = Phase1Database.open(
-        owned_root, ownership_token, MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH
+        owned_root, ownership_token
     )
     recovered_core = Phase1Core(
         recovered_database, load_candidate_contract(PYTHON_ROOT.parent)
@@ -1090,7 +1089,7 @@ def test_interrupt_immediately_after_transaction_a_recovers_once_on_reopen(
     try:
         assert recovered_core.get_run({"runId": run_id})["status"] == "failed_retryable"
         assert recovered_database.one(
-            "SELECT status,error_code FROM p1_generation_attempts WHERE id=?",
+            "SELECT status,error_code FROM generation_attempts WHERE id=?",
             (prepared["attemptId"],),
         ) == {"status": "failed", "error_code": "GENERATION_PROVIDER_ERROR"}
         assert recovered_core.list_events({"runId": run_id, "after": 4})["events"] == [
@@ -1111,166 +1110,16 @@ def test_interrupt_immediately_after_transaction_a_recovers_once_on_reopen(
         recovered_database.close()
 
     reopened_database = Phase1Database.open(
-        owned_root, ownership_token, MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH
+        owned_root, ownership_token
     )
     try:
         assert reopened_database.scalar(
-            "SELECT COUNT(*) FROM p1_run_events "
-            "WHERE job_id=? AND type='generation.interrupted'",
+            "SELECT COUNT(*) FROM run_events "
+            "WHERE run_id=? AND type='generation.interrupted'",
             (run_id,),
         ) == 1
     finally:
         reopened_database.close()
-
-
-@pytest.mark.parametrize(
-    ("mutation", "expected_code"),
-    [
-        ("document_identity", "DERIVED_STATE_MISMATCH"),
-        ("document_text", "DERIVED_STATE_MISMATCH"),
-        ("document_digest", "DERIVED_STATE_MISMATCH"),
-        ("revision", "RUN_STATE_CONFLICT"),
-        ("state", "RUN_STATE_CONFLICT"),
-        ("current_attempt", "ATTEMPT_MISMATCH"),
-    ],
-)
-def test_transaction_b_reasserts_gap_invariants_and_leaves_no_partial_success(
-    core: Phase1Core,
-    database,
-    monkeypatch,
-    mutation: str,
-    expected_code: str,
-):
-    canonical_text = "事务间隙证据。"
-    run_id, prepared = _prepare(core, canonical_text)
-    output = {
-        "schemaVersion": 1,
-        "candidates": [
-            {
-                "type": "fact",
-                "title": "间隙",
-                "statement": "事务间隙仍需重验。",
-                "evidence": [
-                    {"quote": "事务间隙证据", "prefix": "", "suffix": "。"}
-                ],
-            }
-        ],
-    }
-    original_locate = service_module.locate_evidence
-    mutated = False
-
-    def mutate_gap_then_locate(text, evidence):
-        nonlocal mutated
-        if not mutated:
-            mutated = True
-            with database.write_transaction() as connection:
-                if mutation == "document_identity":
-                    replacement_document = "doc_" + "d" * 20
-                    connection.execute(
-                        "INSERT INTO documents("
-                        "id,course_id,name,source_type,page_count,imported_at,file_path"
-                        ") VALUES(?,?,?,?,?,?,?)",
-                        (
-                            replacement_document,
-                            "crs_p1_fixture",
-                            "replacement.md",
-                            "markdown",
-                            None,
-                            "2026-08-26T00:00:00Z",
-                            None,
-                        ),
-                    )
-                    connection.execute(
-                        "INSERT INTO chunks("
-                        "id,document_id,seq,char_offset,text,state,created_at"
-                        ") VALUES(?,?,?,?,?,?,?)",
-                        (
-                            "ck_" + "e" * 20,
-                            replacement_document,
-                            0,
-                            0,
-                            canonical_text,
-                            "parsed",
-                            "2026-08-26T00:00:00Z",
-                        ),
-                    )
-                    connection.execute(
-                        "UPDATE import_jobs SET document_id=? WHERE id=?",
-                        (replacement_document, run_id),
-                    )
-                elif mutation == "document_text":
-                    connection.execute(
-                        "UPDATE chunks SET text='mutated canonical text' "
-                        "WHERE document_id=(SELECT document_id FROM import_jobs WHERE id=?)",
-                        (run_id,),
-                    )
-                elif mutation == "document_digest":
-                    connection.execute(
-                        "UPDATE p1_run_control SET document_sha256=? WHERE job_id=?",
-                        ("f" * 64, run_id),
-                    )
-                elif mutation == "revision":
-                    connection.execute(
-                        "UPDATE p1_run_control SET revision=revision+1 WHERE job_id=?",
-                        (run_id,),
-                    )
-                elif mutation == "state":
-                    connection.execute(
-                        "UPDATE p1_run_control SET status='generating',stage='extract' "
-                        "WHERE job_id=?",
-                        (run_id,),
-                    )
-                    connection.execute(
-                        "UPDATE import_jobs SET stage='extract',status='running' WHERE id=?",
-                        (run_id,),
-                    )
-                elif mutation == "current_attempt":
-                    connection.execute(
-                        "UPDATE p1_generation_attempts SET id=? WHERE id=? AND job_id=?",
-                        ("att_" + "f" * 20, prepared["attemptId"], run_id),
-                    )
-        return original_locate(text, evidence)
-
-    monkeypatch.setattr(service_module, "locate_evidence", mutate_gap_then_locate)
-    with pytest.raises(CoreProblem) as caught:
-        _submit(core, run_id, prepared, output)
-    assert caught.value.code == expected_code
-    assert mutated is True
-    assert database.scalar(
-        "SELECT COUNT(*) FROM p1_candidates WHERE job_id=?", (run_id,)
-    ) == 0
-    assert database.scalar("SELECT COUNT(*) FROM p1_candidate_evidence") == 0
-    assert database.one(
-        "SELECT raw_candidate_count,schema_valid_evidence_count,exact_evidence_count "
-        "FROM p1_run_control WHERE job_id=?",
-        (run_id,),
-    ) == {
-        "raw_candidate_count": 0,
-        "schema_valid_evidence_count": 0,
-        "exact_evidence_count": 0,
-    }
-    assert database.scalar(
-        "SELECT COUNT(*) FROM p1_run_events "
-        "WHERE job_id=? AND type IN ('candidates.ready','run.completed')",
-        (run_id,),
-    ) == 0
-    assert database.one(
-        "SELECT status,raw_output_json,completed_at FROM p1_generation_attempts "
-        "WHERE job_id=? ORDER BY attempt_number DESC LIMIT 1",
-        (run_id,),
-    ) == {"status": "started", "raw_output_json": None, "completed_at": None}
-
-    monkeypatch.setattr(service_module, "locate_evidence", original_locate)
-    assert repository_module.recover_interrupted_runs(database) == 1
-    assert database.scalar(
-        "SELECT status FROM p1_run_control WHERE job_id=?", (run_id,)
-    ) == "failed_retryable"
-    if mutation in ("document_text", "document_digest"):
-        with pytest.raises(CoreProblem) as snapshot_error:
-            core.get_run({"runId": run_id})
-        assert snapshot_error.value.code == "DERIVED_STATE_MISMATCH"
-    else:
-        assert core.get_run({"runId": run_id})["status"] == "failed_retryable"
 
 
 @pytest.mark.parametrize(

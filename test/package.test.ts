@@ -47,12 +47,12 @@ describe('phase1 external bundle package', () => {
     expect(JSON.stringify(pkg.exports)).not.toContain('/src/')
   })
 
-  test('pins the shipped Client runtime and local build dependencies exactly', async () => {
+  test('supports rc7/rc8 peers and keeps local build dependencies exact', async () => {
     const pkg = JSON.parse(await readFile('package.json', 'utf8'))
     expect(pkg.peerDependencies).toMatchObject({
-      '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.7',
-      '@deepseek-ai/dsh-client-ui-conversation': '0.1.0-rc.7',
-      '@deepseek-ai/dsh-client-ui-model-selection': '0.1.0-rc.7',
+      '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.7 || 0.1.0-rc.8',
+      '@deepseek-ai/dsh-client-ui-conversation': '0.1.0-rc.7 || 0.1.0-rc.8',
+      '@deepseek-ai/dsh-client-ui-model-selection': '0.1.0-rc.7 || 0.1.0-rc.8',
     })
     expect(pkg.devDependencies).toMatchObject({
       '@deepseek-ai/dsh-client-modules': '0.1.0-rc.7',
@@ -69,15 +69,37 @@ describe('phase1 external bundle package', () => {
     })
   })
 
-  test('pins every direct dependency exactly', async () => {
+  test('pins development dependencies and limits DSH compatibility peers', async () => {
     expect(await exists('package.json')).toBe(true)
     if (!await exists('package.json')) return
 
     const pkg = JSON.parse(await readFile('package.json', 'utf8'))
     for (const field of ['peerDependencies', 'devDependencies'] as const) {
       for (const [name, version] of Object.entries(pkg[field] ?? {})) {
+        if (field === 'peerDependencies' && name.startsWith('@deepseek-ai/dsh-')) {
+          expect(version).toBe('0.1.0-rc.7 || 0.1.0-rc.8')
+          continue
+        }
         expect(version, `${field}.${name}`).toMatch(/^\d+\.\d+\.\d+(?:-[a-z0-9.]+)?$/)
       }
     }
   })
+
+  test('does not stage legacy v8 migrations before testing or packing', async () => {
+    const pkg = JSON.parse(await readFile('package.json', 'utf8'))
+    expect(pkg.scripts['stage:v8']).toBeUndefined()
+    expect(pkg.scripts.pretest).not.toContain('stage:v8')
+    expect(pkg.scripts.prepack).not.toContain('stage:v8')
+  })
+})
+
+
+test('ships lifecycle CLI and instructions, fake provider has no runtime rc7 dependency', async () => {
+  const pkg = JSON.parse(await readFile('package.json', 'utf8'))
+  expect(pkg.bin).toEqual({ betterlearn: 'bin/betterlearn.mjs' })
+  expect(pkg.files).toEqual(expect.arrayContaining(['bin/betterlearn.mjs', 'docs/install.md']))
+  const fake = JSON.parse(await readFile('acceptance/fake-provider/package.json', 'utf8'))
+  expect(fake.dependencies).toBeUndefined()
+  expect(fake.peerDependencies['@deepseek-ai/dsh-llm']).toBe('0.1.0-rc.7 || 0.1.0-rc.8')
+  expect(fake.devDependencies['@deepseek-ai/dsh-llm']).toBe('0.1.0-rc.7')
 })

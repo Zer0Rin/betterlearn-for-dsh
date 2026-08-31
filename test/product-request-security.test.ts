@@ -48,11 +48,11 @@ describe('product request security', () => {
     expect(requestHasBody({ headers: {} } as never)).toBe(false)
   })
 
-  test('parses exactly the 512 KiB boundary and rejects +1', async () => {
-    const exactText = 'x'.repeat(512 * 1024 - 11)
+  test('parses exactly the 8 MiB boundary and rejects +1', async () => {
+    const exactText = 'x'.repeat(8 * 1024 * 1024 - 11)
     const exact = Readable.from([Buffer.from(JSON.stringify({ text: exactText }))])
     await expect(parseProductJsonBody(exact as never)).resolves.toEqual({ text: exactText })
-    const overText = 'x'.repeat(512 * 1024 - 10)
+    const overText = 'x'.repeat(8 * 1024 * 1024 - 10)
     const over = Readable.from([Buffer.from(JSON.stringify({ text: overText }))])
     await expect(parseProductJsonBody(over as never)).rejects.toMatchObject({
       status: 413, code: 'BODY_TOO_LARGE',

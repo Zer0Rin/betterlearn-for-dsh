@@ -44,24 +44,52 @@ export async function pollRun(options: {
   const { api, runId, signal, scheduler, onUpdate } = options
   let after = options.after
   let delayMs = 1_000
+  if (signal.aborted) return
+  let changed = false
+  let sleepController: AbortController | undefined
+  let unwatch = api.watchRun?.(runId, () => {
+    changed = true
+    sleepController?.abort()
+  })
+  const stopWatching = () => {
+    unwatch?.()
+    unwatch = undefined
+    sleepController?.abort()
+  }
+  signal.addEventListener('abort', stopWatching, { once: true })
 
-  while (!signal.aborted) {
-    if (!scheduler.isVisible()) {
-      await scheduler.waitUntilVisible(signal)
+  try {
+    while (!signal.aborted) {
+      if (!scheduler.isVisible()) {
+        await scheduler.waitUntilVisible(signal)
+        if (signal.aborted) return
+      }
+      changed = false
+      const [run, page] = await Promise.all([
+        api.getRun(runId, signal),
+        api.listEvents(runId, after, signal),
+      ])
       if (signal.aborted) return
-    }
-    const [run, page] = await Promise.all([
-      api.getRun(runId, signal),
-      api.listEvents(runId, after, signal),
-    ])
-    if (signal.aborted) return
-    validateEventPage(after, page)
-    onUpdate({ run, events: page.events, nextAfter: page.nextAfter })
-    after = page.nextAfter
-    if (PAUSE_OR_TERMINAL.has(run.status)) return
+      validateEventPage(after, page)
+      onUpdate({ run, events: page.events, nextAfter: page.nextAfter })
+      after = page.nextAfter
+      if (PAUSE_OR_TERMINAL.has(run.status)) return
 
-    const receivedEvents = page.events.length > 0
-    await scheduler.sleep(receivedEvents ? 1_000 : delayMs, signal)
-    delayMs = receivedEvents ? 1_000 : Math.min(delayMs * 2, 8_000)
+      const receivedEvents = page.events.length > 0
+      if (!changed) {
+        sleepController = new AbortController()
+        try {
+          await scheduler.sleep(receivedEvents ? 1_000 : delayMs, sleepController.signal)
+        } catch (error) {
+          if (!changed || signal.aborted) throw error
+        } finally {
+          sleepController = undefined
+        }
+      }
+      delayMs = receivedEvents || changed ? 1_000 : Math.min(delayMs * 2, 8_000)
+    }
+  } finally {
+    signal.removeEventListener('abort', stopWatching)
+    stopWatching()
   }
 }

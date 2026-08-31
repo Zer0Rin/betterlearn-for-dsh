@@ -1,5 +1,6 @@
 import type {
   ClientApi,
+  DocumentPreview,
   EventPage,
   GenerationLaunch,
   ImportTextRequest,
@@ -52,6 +53,17 @@ function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> 
 
 export function createClientApi(): ClientApi {
   return {
+    previewDocument(input, signal) {
+      return post<DocumentPreview>('/nobei/v1/documents/preview', input, signal)
+    },
+    watchRun(runId, onChange) {
+      if (typeof EventSource === 'undefined') return () => undefined
+      const stream = new EventSource(`/nobei/v1/runs/${encodeURIComponent(runId)}/stream`)
+      stream.addEventListener('run.changed', onChange)
+      // Polling continues independently; a broken SSE connection is not a run failure.
+      stream.onerror = () => stream.close()
+      return () => stream.close()
+    },
     importText(input: ImportTextRequest, signal?: AbortSignal) {
       return post<GenerationLaunch>('/nobei/v1/imports', input, signal)
     },

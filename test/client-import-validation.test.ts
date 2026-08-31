@@ -12,17 +12,17 @@ const valid = { filename: '教材.md', mediaType: 'text/markdown' as const, text
 describe('phase1d import validation', () => {
   test('rejects empty text and invalid filenames', () => {
     expect(validateImport({ ...valid, text: '' }).errors).toContain('EMPTY_TEXT')
-    for (const filename of ['a/b.md', 'a\\b.md', 'a\0b.md', '.', '..', `${'a'.repeat(253)}.md`, '教材.pdf']) {
+    for (const filename of ['a/b.md', 'a\\b.md', 'a\0b.md', '.', '..', `${'a'.repeat(253)}.md`, '教材.exe']) {
       expect(validateImport({ ...valid, filename }).errors, filename).toContain('FILENAME_INVALID')
     }
   })
 
   test('rejects unsupported media types', () => {
-    expect(validateImport({ ...valid, mediaType: 'application/pdf' as never }).errors)
+    expect(validateImport({ ...valid, mediaType: 'application/octet-stream' as never }).errors)
       .toContain('MEDIA_TYPE_INVALID')
   })
 
-  test('accepts exactly 65,536 UTF-8 bytes and rejects one byte more', () => {
+  test('accepts exactly 524,288 UTF-8 bytes and rejects one byte more', () => {
     const atLimit = validateImport({ ...valid, text: 'a'.repeat(MAX_DOCUMENT_BYTES) })
     expect(atLimit).toMatchObject({ valid: true, byteSize: MAX_DOCUMENT_BYTES })
     expect(validateImport({ ...valid, text: 'a'.repeat(MAX_DOCUMENT_BYTES + 1) }).errors)
@@ -51,7 +51,7 @@ describe('phase1d import validation', () => {
     expect(mediaTypeForFile({ name: 'notes.md', type: '' })).toBe('text/markdown')
     expect(mediaTypeForFile({ name: 'notes.txt', type: 'text/plain' })).toBe('text/plain')
     expect(mediaTypeForFile({ name: 'notes.md', type: 'text/markdown' })).toBe('text/markdown')
-    expect(mediaTypeForFile({ name: 'notes.pdf', type: 'application/pdf' })).toBeUndefined()
+    expect(mediaTypeForFile({ name: 'notes.pdf', type: 'application/pdf' })).toBe('application/pdf')
     expect(defaultPasteFilename(new Date('2026-08-29T12:00:00+08:00'))).toBe('粘贴内容-2026-08-29.md')
   })
 })

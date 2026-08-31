@@ -11,6 +11,7 @@ export function EvidenceReader({ text, evidence }: EvidenceReaderProps) {
   const [selectedSeq, setSelectedSeq] = useState(evidence[0]?.seq)
   const [flashing, setFlashing] = useState(false)
   const marker = useRef<HTMLElement>(null)
+  const source = useRef<HTMLParagraphElement>(null)
   const selected = evidence.find(item => item.seq === selectedSeq) ?? evidence[0]
   const segments = useMemo(
     () => selected === undefined ? [{ kind: 'plain' as const, start: 0, end: text.length, text }] : splitEvidence(text, selected),
@@ -18,8 +19,10 @@ export function EvidenceReader({ text, evidence }: EvidenceReaderProps) {
   )
 
   useEffect(() => {
-    if (selected === undefined || marker.current === null) return
-    marker.current.scrollIntoView({ block: 'center' })
+    if (selected === undefined || marker.current === null || source.current === null) return
+    // Scroll the source pane only; scrolling all ancestors can displace DSH's dock.
+    source.current.scrollTop += marker.current.getBoundingClientRect().top
+      - source.current.getBoundingClientRect().top - source.current.clientHeight / 2
     setFlashing(true)
     const timer = globalThis.setTimeout(() => setFlashing(false), 900)
     return () => globalThis.clearTimeout(timer)
@@ -37,7 +40,7 @@ export function EvidenceReader({ text, evidence }: EvidenceReaderProps) {
             onClick={() => setSelectedSeq(item.seq)}>证据 {index + 1}</button>
         ))}
       </div>
-      <p className="nobei-client__source-text" data-testid="nobei-source-text">
+      <p ref={source} className="nobei-client__source-text" data-testid="nobei-source-text">
         {segments.map(segment => segment.kind === 'evidence' ? (
           <mark key={`${segment.start}:${segment.end}`} ref={marker}
             data-evidence-seq={selected?.seq}

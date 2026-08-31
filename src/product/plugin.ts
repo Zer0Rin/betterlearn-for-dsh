@@ -6,7 +6,6 @@ import { StructuredGenerationAdapter } from './generation-adapter.js'
 import { GenerationCoordinator } from './generation-coordinator.js'
 import { DshModelSelectionResolver, type ModelSelectionResolver } from './model-selection-resolver.js'
 import { loadCandidateContract, type CandidateContract } from './contract.js'
-import { installProviderLedger, ProviderLedger } from './provider-ledger.js'
 import { registerProductRoutes, type ProductOperations } from './routes.js'
 
 export const name = 'nobei-phase1c'
@@ -17,10 +16,8 @@ export interface ProductPluginConfig extends CoreSupervisorConfig {}
 export interface ProductPluginDependencies {
   packageRoot: string
   loadContract(packageRoot: string): CandidateContract
-  createLedger(): ProviderLedger
-  installLedger(ctx: Context, ledger: ProviderLedger): () => void
   createSupervisor(ctx: Context, config: ProductPluginConfig, contract: CandidateContract): CoreSupervisor
-  createAdapter(ctx: Context, contract: CandidateContract, ledger: ProviderLedger, packageRoot: string): StructuredGenerationAdapter
+  createAdapter(ctx: Context, contract: CandidateContract, packageRoot: string): StructuredGenerationAdapter
   createModelSelectionResolver(ctx: Context): ModelSelectionResolver
   createCoordinator(supervisor: CoreSupervisor, adapter: StructuredGenerationAdapter, resolver: ModelSelectionResolver): GenerationCoordinator
   registerRoutes(ctx: Context, state: { readonly state: CoreSupervisor['state'] }, operations: ProductOperations): () => void
@@ -31,15 +28,13 @@ const packageRoot = fileURLToPath(new URL('../..', import.meta.url))
 const defaultDependencies: ProductPluginDependencies = {
   packageRoot,
   loadContract: loadCandidateContract,
-  createLedger: () => new ProviderLedger(),
-  installLedger: installProviderLedger,
   createSupervisor: (ctx, config, contract) => new CoreSupervisor(
     ctx.subprocess,
     config,
     { schemaVersion: contract.schemaVersion, schemaSha256: contract.schemaSha256 },
   ),
-  createAdapter: (ctx, contract, ledger, ownedPackageRoot) => new StructuredGenerationAdapter(
-    ctx, contract, ledger, { packageRoot: ownedPackageRoot },
+  createAdapter: (ctx, contract, ownedPackageRoot) => new StructuredGenerationAdapter(
+    ctx, contract, { packageRoot: ownedPackageRoot },
   ),
   createModelSelectionResolver: (ctx) => new DshModelSelectionResolver(ctx),
   createCoordinator: (supervisor, adapter, resolver) => new GenerationCoordinator(
@@ -83,6 +78,10 @@ export async function applyProductPlugin(
   let coordinator: GenerationCoordinator | undefined
 
   const operations: ProductOperations = {
+    previewDocument: (params, signal) => supervisor
+      ? supervisor.withReadyClient((client) => client.previewDocument(params, signal))
+      : Promise.reject(new Error('CORE_UNAVAILABLE')),
+    watchRun: (runId, onChange) => coordinator!.watchRun(runId, onChange),
     launchImport: (params, signal) => coordinator
       ? coordinator.launchImport(params, signal)
       : Promise.reject(new Error('CORE_UNAVAILABLE')),
@@ -112,24 +111,20 @@ export async function applyProductPlugin(
   }
 
   let unregisterRoutes: (() => void) | undefined
-  let removeLedger: (() => void) | undefined
   let disposePromise: Promise<void> | undefined
   const dispose = (): Promise<void> => {
     disposePromise ??= disposeInOrder([
       () => { unregisterRoutes?.(); unregisterRoutes = undefined },
       () => coordinator?.dispose(),
       () => supervisor?.dispose(),
-      () => { removeLedger?.(); removeLedger = undefined },
     ])
     return disposePromise
   }
 
   try {
     unregisterRoutes = dependencies.registerRoutes(ctx, state, operations)
-    const ledger = dependencies.createLedger()
-    removeLedger = dependencies.installLedger(ctx, ledger)
     supervisor = dependencies.createSupervisor(ctx, config, contract)
-    const adapter = dependencies.createAdapter(ctx, contract, ledger, dependencies.packageRoot)
+    const adapter = dependencies.createAdapter(ctx, contract, dependencies.packageRoot)
     const resolver = dependencies.createModelSelectionResolver(ctx)
     coordinator = dependencies.createCoordinator(supervisor, adapter, resolver)
     await supervisor.start()

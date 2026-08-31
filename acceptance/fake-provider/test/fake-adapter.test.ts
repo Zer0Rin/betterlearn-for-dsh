@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, test, vi } from 'vitest'
 import { loadCandidateContract } from '../../../src/product/contract.js'
 import {
+  p3Fixture,
   FakeProviderAdapter,
   fakeProviderRequestDigest,
   installFakeProvider,
@@ -256,4 +257,16 @@ describe('FakeProviderAdapter', () => {
       .toThrow('FAKE_LEDGER_TOKEN_INVALID')
     expect(ctx.llm.registerAdapter).not.toHaveBeenCalled()
   })
+})
+
+
+test('P3 fixtures plan pairs, emit exact Unicode evidence and preserve failure marker', () => {
+  const blocks = [{ id: 'b1', text: '甲' }, { id: 'b2', text: '乙' }, { id: 'b3', text: '丙' }]
+  const planning = `Nobei semantic planning (P3).\nBLOCKS_JSON:\n${JSON.stringify(blocks)}`
+  expect(p3Fixture([{ content: planning }])).toEqual({ groups: [{ blockIds: ['b1', 'b2'] }, { blockIds: ['b3'] }] })
+  blocks[0].text = 'fixture:p3-invalid-plan'
+  expect(p3Fixture([{ content: `Nobei semantic planning (P3).\nBLOCKS_JSON:\n${JSON.stringify(blocks)}` }])).toEqual({ groups: [{ blockIds: ['missing-block'] }] })
+  const source = '😀'.repeat(41) + '\nP3事实：知识😀\n尾段'
+  const value = p3Fixture([{ content: `Nobei candidate extraction (l1-v2).\nSOURCE:\n${source}` }]) as any
+  expect(value.candidates[0]).toMatchObject({ title: '知识😀', statement: '知识😀', evidence: [{ quote: 'P3事实：知识😀', prefix: '😀'.repeat(39) + '\n', suffix: '\n尾段' }] })
 })

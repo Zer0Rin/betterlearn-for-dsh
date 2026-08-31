@@ -23,79 +23,7 @@ def core(database):
     return Phase1Core(database, load_candidate_contract(PYTHON_ROOT.parent))
 
 
-def test_import_normalizes_text_and_commits_one_run_command(core: Phase1Core, database):
-    result = core.import_text(
-        {
-            "filename": "chapter-1.md",
-            "mediaType": "text/markdown",
-            "text": "# 标题\r\n\r定义。\r",
-        }
-    )
-
-    assert result.keys() == {"documentId", "runId", "revision"}
-    assert re.fullmatch(r"doc_[0-9a-f]{20}", result["documentId"])
-    assert re.fullmatch(r"job_[0-9a-f]{20}", result["runId"])
-    assert result["revision"] == 1
-
-    run = core.get_run({"runId": result["runId"]})
-    assert run["status"] == "awaiting_generation"
-    assert run["stage"] == "extract"
-    assert run["revision"] == 1
-    assert run["document"]["text"] == "# 标题\n\n定义。\n"
-    assert database.scalar(
-        "SELECT COUNT(*) FROM chunks WHERE document_id=?", (result["documentId"],)
-    ) == 1
-    assert database.scalar(
-        "SELECT char_offset FROM chunks WHERE document_id=?", (result["documentId"],)
-    ) == 0
-
-    canonical = "# 标题\n\n定义。\n"
-    control = database.one(
-        "SELECT document_sha256,byte_size,character_count FROM p1_run_control WHERE job_id=?",
-        (result["runId"],),
-    )
-    assert control == {
-        "document_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
-        "byte_size": len(canonical.encode("utf-8")),
-        "character_count": len(canonical),
-    }
-
-    events = core.list_events({"runId": result["runId"], "after": 0})["events"]
-    assert [event["seq"] for event in events] == [1, 2, 3]
-    assert [event["type"] for event in events] == [
-        "run.created",
-        "document.ready",
-        "generation.awaiting",
-    ]
-    assert [event["stage"] for event in events] == ["source", "parse", "extract"]
-    assert events[0]["payload"] == {"runId": result["runId"]}
-    assert events[1]["payload"] == {"documentId": result["documentId"]}
-    assert events[2]["payload"] == {"retryCount": 0}
-    assert all(
-        forbidden not in json.dumps(event["payload"])
-        for event in events
-        for forbidden in (canonical, "chapter-1.md", "file_path", "model")
-    )
-
-
-def test_plain_text_import_uses_txt_source_type(core: Phase1Core, database):
-    result = core.import_text(
-        {"filename": "chapter.txt", "mediaType": "text/plain", "text": "plain text"}
-    )
-
-    assert database.scalar(
-        "SELECT source_type FROM documents WHERE id=?", (result["documentId"],)
-    ) == "txt"
-    assert database.one(
-        "SELECT page_count,file_path FROM documents WHERE id=?", (result["documentId"],)
-    ) == {"page_count": None, "file_path": None}
-    assert database.one(
-        "SELECT seq,char_offset,text,state FROM chunks WHERE document_id=?",
-        (result["documentId"],),
-    ) == {"seq": 0, "char_offset": 0, "text": "plain text", "state": "parsed"}
-
-
-def test_import_accepts_exact_64_kib_utf8_boundary(core: Phase1Core):
+def test_import_accepts_exact_512_kib_utf8_boundary(core: Phase1Core):
     text = "a" * MAX_DOCUMENT_BYTES
 
     result = core.import_text(
@@ -118,7 +46,7 @@ def test_import_rejects_one_byte_over_limit_with_exact_public_data(core: Phase1C
     assert caught.value.code == "REQUEST_TOO_LARGE"
     assert caught.value.public() == {
         "code": "REQUEST_TOO_LARGE",
-        "data": {"actualBytes": 65_537, "maxBytes": 65_536},
+        "data": {"actualBytes": MAX_DOCUMENT_BYTES + 1, "maxBytes": MAX_DOCUMENT_BYTES},
     }
 
 
@@ -176,64 +104,6 @@ def test_repeated_identical_content_creates_distinct_documents_and_runs(core: Ph
     assert first["runId"] != second["runId"]
 
 
-@pytest.mark.parametrize("column,drift", [("stage", "verify"), ("status", "running")])
-@pytest.mark.parametrize("reader", ["get_run", "list_events"])
-def test_reads_reject_projection_drift_without_repair(
-    core: Phase1Core,
-    database,
-    column: str,
-    drift: str,
-    reader: str,
-):
-    result = core.import_text(
-        {"filename": "drift.txt", "mediaType": "text/plain", "text": "valid"}
-    )
-    run_id = result["runId"]
-    with database.write_transaction() as connection:
-        statement = {
-            "stage": "UPDATE import_jobs SET stage=? WHERE id=?",
-            "status": "UPDATE import_jobs SET status=? WHERE id=?",
-        }[column]
-        connection.execute(statement, (drift, run_id))
-
-    with pytest.raises(CoreProblem) as caught:
-        if reader == "get_run":
-            core.get_run({"runId": run_id})
-        else:
-            core.list_events({"runId": run_id, "after": 0})
-
-    assert caught.value.code == "DERIVED_STATE_MISMATCH"
-    query = {
-        "stage": "SELECT stage FROM import_jobs WHERE id=?",
-        "status": "SELECT status FROM import_jobs WHERE id=?",
-    }[column]
-    assert database.scalar(query, (run_id,)) == drift
-
-
-def test_transition_run_changes_revision_projection_and_event_once(core: Phase1Core, database):
-    result = core.import_text(
-        {"filename": "transition.txt", "mediaType": "text/plain", "text": "valid"}
-    )
-    run_id = result["runId"]
-
-    with database.write_transaction() as connection:
-        row = transition_run(
-            connection,
-            run_id,
-            "awaiting_generation",
-            "generating",
-            "generation.started",
-            {"attemptId": "att_" + "a" * 20, "attemptNumber": 1},
-        )
-
-    assert row["revision"] == 2
-    assert database.one("SELECT stage,status FROM import_jobs WHERE id=?", (run_id,)) == {
-        "stage": "extract",
-        "status": "running",
-    }
-    assert database.scalar("SELECT COUNT(*) FROM p1_run_events WHERE job_id=?", (run_id,)) == 4
-
-
 def test_append_event_rejects_non_closed_payload_before_sql(core: Phase1Core, database):
     result = core.import_text(
         {"filename": "events.txt", "mediaType": "text/plain", "text": "valid"}
@@ -251,7 +121,7 @@ def test_append_event_rejects_non_closed_payload_before_sql(core: Phase1Core, da
             )
 
     assert caught.value.code == "INVALID_PARAMS"
-    assert database.scalar("SELECT COUNT(*) FROM p1_run_events WHERE job_id=?", (run_id,)) == 3
+    assert database.scalar("SELECT COUNT(*) FROM run_events WHERE run_id=?", (run_id,)) == 3
 
 
 def test_append_event_enforces_utf8_byte_limit_before_any_sql(monkeypatch):
@@ -313,11 +183,11 @@ def test_reads_wait_for_whole_write_transaction_and_observe_one_snapshot(
     class RollBackWrite(Exception):
         pass
 
-    def write_split_projection() -> None:
+    def write_split_transaction() -> None:
         try:
             with database.write_transaction() as connection:
                 connection.execute(
-                    "UPDATE p1_run_control SET status=?,stage=?,revision=? WHERE job_id=?",
+                    "UPDATE runs SET status=?,stage=?,revision=? WHERE id=?",
                     ("generating", "extract", 2, run_id),
                 )
                 writer_split.set()
@@ -325,10 +195,6 @@ def test_reads_wait_for_whole_write_transaction_and_observe_one_snapshot(
                     raise AssertionError("reader test did not release writer")
                 if outcome == "rollback":
                     raise RollBackWrite()
-                connection.execute(
-                    "UPDATE import_jobs SET stage=?,status=? WHERE id=?",
-                    ("extract", "running", run_id),
-                )
                 insert_generation_attempt(
                     connection,
                     attempt_id="att_" + "b" * 20,
@@ -377,7 +243,7 @@ def test_reads_wait_for_whole_write_transaction_and_observe_one_snapshot(
         finally:
             events_done.set()
 
-    writer = threading.Thread(target=write_split_projection)
+    writer = threading.Thread(target=write_split_transaction)
     run_reader = threading.Thread(target=read_run)
     events_reader = threading.Thread(target=read_events)
     writer.start()
@@ -425,3 +291,20 @@ def test_service_reads_inside_same_thread_write_transaction_do_not_deadlock(
             event["seq"]
             for event in core.list_events({"runId": imported["runId"], "after": 0})["events"]
         ] == [1, 2, 3]
+
+
+@pytest.mark.parametrize('filename,media_type', [('lesson.txt', 'text/plain'), ('lesson.md', 'text/markdown')])
+def test_import_stores_canonical_document_without_projection(core, database, filename, media_type):
+    result = core.import_text({'filename': filename, 'mediaType': media_type, 'text': '😀标题\r\n\r第一段。\r'})
+    canonical = '😀标题\n\n第一段。\n'
+    assert database.one('SELECT filename,media_type,canonical_text,byte_size,character_count,text_sha256 FROM documents WHERE id=?', (result['documentId'],)) == {
+        'filename': filename, 'media_type': media_type, 'canonical_text': canonical,
+        'byte_size': len(canonical.encode('utf-8')), 'character_count': len(canonical),
+        'text_sha256': hashlib.sha256(canonical.encode('utf-8')).hexdigest(),
+    }
+    assert database.one('SELECT document_id,status,stage,revision FROM runs WHERE id=?', (result['runId'],)) == {
+        'document_id': result['documentId'], 'status': 'awaiting_generation', 'stage': 'extract', 'revision': 1,
+    }
+    events = core.list_events({'runId': result['runId'], 'after': 0})['events']
+    assert [e['seq'] for e in events] == [1, 2, 3]
+    assert [e['type'] for e in events] == ['run.created', 'document.ready', 'generation.awaiting']

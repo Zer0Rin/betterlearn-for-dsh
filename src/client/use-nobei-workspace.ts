@@ -7,6 +7,7 @@ import {
   type ModelDirectoryResolverPort,
 } from './model-directory-bridge.js'
 import { pollRun, type PollScheduler } from './poll-run.js'
+import { workspaceCopy } from './workspace-copy.js'
 import {
   clearPendingReview,
   createIdempotencyKey,
@@ -164,7 +165,7 @@ export function useNobeiWorkspace(options: {
       setMessage(undefined)
       return
     }
-    setMessage('暂时无法完成操作，请重试。')
+    setMessage(workspaceCopy.operationFailed)
   }, [ordinarySession])
 
   const refreshModelSelection = useCallback(async (): Promise<ModelSelectionSnapshot> => {
@@ -265,10 +266,23 @@ export function useNobeiWorkspace(options: {
     }).catch(setFailure)
   }, [api, loadTerminal, scheduler, sessionId, setFailure, storage])
 
+  // Restoring a saved run belongs to the session lifecycle, not the model
+  // directory lifecycle. Cordis may supply new directory references on render.
+  const startCurrentPoll = useRef(startPoll)
+  startCurrentPoll.current = startPoll
   useEffect(() => {
     mounted.current = true
-    if (initial.runId) startPoll(initial.runId, initial.lastEventSeq)
-    if (!initial.runId && ordinarySession) {
+    const saved = readSessionState(storage, sessionId)
+    if (saved.runId) startCurrentPoll.current(saved.runId, saved.lastEventSeq)
+    return () => {
+      mounted.current = false
+      pollController.current?.abort()
+      commandController.current?.abort()
+    }
+  }, [sessionId, storage])
+
+  useEffect(() => {
+    if (!readSessionState(storage, sessionId).runId && ordinarySession) {
       const snapshot = directory?.store?.getSnapshot()
       const current = detachedModelSelection(snapshot?.current)
       if (snapshot?.routable === true && current !== undefined) {
@@ -280,12 +294,7 @@ export function useNobeiWorkspace(options: {
     } else if (!ordinarySession) {
       setFailure(new ModelDirectoryBridgeError('MODEL_SELECTION_UNAVAILABLE'))
     }
-    return () => {
-      mounted.current = false
-      pollController.current?.abort()
-      commandController.current?.abort()
-    }
-  }, [directory?.store, initial.lastEventSeq, initial.runId, ordinarySession, refreshModelSelection, setFailure, startPoll])
+  }, [directory?.store, ordinarySession, refreshModelSelection, sessionId, setFailure, storage])
 
   const adoptImport = useCallback(async (pending: Promise<ImportLaunch>): Promise<boolean> => {
     commandBusy.current = true
@@ -427,7 +436,7 @@ export function useNobeiWorkspace(options: {
       clearPendingReview(storage, sessionId)
       setRun(result.run)
       setServiceUnavailable(false)
-      setMessage('审核结果已保存。')
+      setMessage(persist ? workspaceCopy.reviewSaved : workspaceCopy.reviewRecovered)
       await loadTerminal(result.run, signal)
       return true
     } catch (error) {
@@ -445,12 +454,13 @@ export function useNobeiWorkspace(options: {
           if (!signal.aborted) {
             setRun(fresh)
             await loadTerminal(fresh, signal)
-            setMessage('候选状态已变化，已重新加载。')
+            setMessage(workspaceCopy.reviewChanged)
             return true
           }
         }
       } else {
         setFailure(error)
+        setMessage(workspaceCopy.reviewUnconfirmed)
       }
       return false
     } finally {
@@ -500,7 +510,7 @@ export function useNobeiWorkspace(options: {
     const digest = await reviewRequestDigest(candidate.candidateId, pending.request)
     if (digest !== pending.requestDigest || parentSignal.aborted) {
       clearPendingReview(storage, sessionId)
-      setMessage('待恢复的审核命令已失效，已重新加载候选。')
+      setMessage(workspaceCopy.reviewExpired)
       return
     }
     reviewBusy.current = true

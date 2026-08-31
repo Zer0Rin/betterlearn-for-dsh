@@ -16,7 +16,6 @@ from nobei_core.database import Phase1Database
 from nobei_core.errors import CoreProblem
 from nobei_core.ownership import CoreLease, initialize_owned_root
 
-from conftest import MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH
 
 
 def _digest_file(path: Path) -> str:
@@ -32,7 +31,7 @@ def _database_family_digests(root: Path) -> dict[str, str]:
 
 
 def _open(root: Path, token: str) -> Phase1Database:
-    return Phase1Database.open(root, token, MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH)
+    return Phase1Database.open(root, token)
 
 
 def test_initialize_owned_root_writes_exact_marker_to_empty_directory(tmp_path: Path, ownership_token: str):

@@ -10,7 +10,7 @@ from nobei_core.database import Phase1Database
 from nobei_core.errors import CoreProblem
 from nobei_core.service import Phase1Core
 
-from conftest import MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH, PYTHON_ROOT
+from conftest import PYTHON_ROOT
 
 
 MODEL = {
@@ -22,7 +22,7 @@ MODEL = {
 
 def _open(owned_root, ownership_token) -> tuple[Phase1Database, Phase1Core]:
     database = Phase1Database.open(
-        owned_root, ownership_token, MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH
+        owned_root, ownership_token
     )
     return database, Phase1Core(database, load_candidate_contract(PYTHON_ROOT.parent))
 
@@ -49,12 +49,9 @@ def test_database_startup_recovers_interrupted_attempt_once(
     if interrupted_status == "validating":
         with database.write_transaction() as connection:
             connection.execute(
-                "UPDATE p1_run_control SET status='validating',stage='verify',revision=3 "
-                "WHERE job_id=?",
+                "UPDATE runs SET status='validating',stage='verify',revision=3 "
+                "WHERE id=?",
                 (run_id,),
-            )
-            connection.execute(
-                "UPDATE import_jobs SET stage='verify',status='running' WHERE id=?", (run_id,)
             )
         expected_revision = 4
     database.close()
@@ -67,22 +64,22 @@ def test_database_startup_recovers_interrupted_attempt_once(
         assert recovered["stage"] == "failed"
         assert recovered["revision"] == expected_revision
         assert recovered_database.one(
-            "SELECT status,error_code,completed_at FROM p1_generation_attempts WHERE id=?",
+            "SELECT status,error_code,completed_at FROM generation_attempts WHERE id=?",
             (prepared["attemptId"],),
         ) == {
             "status": "failed",
             "error_code": "GENERATION_PROVIDER_ERROR",
             "completed_at": recovered_database.scalar(
-                "SELECT completed_at FROM p1_generation_attempts WHERE id=?",
+                "SELECT completed_at FROM generation_attempts WHERE id=?",
                 (prepared["attemptId"],),
             ),
         }
         assert recovered_database.scalar(
-            "SELECT completed_at IS NOT NULL FROM p1_generation_attempts WHERE id=?",
+            "SELECT completed_at IS NOT NULL FROM generation_attempts WHERE id=?",
             (prepared["attemptId"],),
         ) == 1
         assert recovered_database.one(
-            "SELECT retry_count,error_code,error_detail FROM p1_run_control WHERE job_id=?",
+            "SELECT retry_count,error_code,error_detail FROM runs WHERE id=?",
             (run_id,),
         ) == {
             "retry_count": 0,
@@ -105,7 +102,7 @@ def test_database_startup_recovers_interrupted_attempt_once(
     try:
         assert reopened_core.list_events({"runId": run_id, "after": 4})["events"] == events
         assert reopened_database.scalar(
-            "SELECT COUNT(*) FROM p1_run_events WHERE job_id=? AND type='generation.interrupted'",
+            "SELECT COUNT(*) FROM run_events WHERE run_id=? AND type='generation.interrupted'",
             (run_id,),
         ) == 1
     finally:
@@ -139,10 +136,10 @@ def test_startup_recovery_spends_no_retry_and_attempt_two_becomes_terminal(
         assert recovered["status"] == "failed_terminal"
         assert recovered["revision"] == 6
         assert recovered_database.scalar(
-            "SELECT retry_count FROM p1_run_control WHERE job_id=?", (run_id,)
+            "SELECT retry_count FROM runs WHERE id=?", (run_id,)
         ) == 1
         assert recovered_database.one(
-            "SELECT status,error_code FROM p1_generation_attempts WHERE id=?",
+            "SELECT status,error_code FROM generation_attempts WHERE id=?",
             (second["attemptId"],),
         ) == {
             "status": "failed",
@@ -174,21 +171,21 @@ def test_recovery_rolls_back_every_interrupted_run_when_one_event_write_fails(
             "runs": [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM p1_run_control WHERE job_id IN (?,?) ORDER BY job_id",
+                    "SELECT * FROM runs WHERE id IN (?,?) ORDER BY id",
                     run_ids,
                 ).fetchall()
             ],
             "attempts": [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM p1_generation_attempts WHERE id IN (?,?) ORDER BY id",
+                    "SELECT * FROM generation_attempts WHERE id IN (?,?) ORDER BY id",
                     (first_attempt["attemptId"], second_attempt["attemptId"]),
                 ).fetchall()
             ],
             "events": [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM p1_run_events WHERE job_id IN (?,?) ORDER BY job_id,seq",
+                    "SELECT * FROM run_events WHERE run_id IN (?,?) ORDER BY run_id,seq",
                     run_ids,
                 ).fetchall()
             ],
@@ -215,21 +212,21 @@ def test_recovery_rolls_back_every_interrupted_run_when_one_event_write_fails(
             "runs": [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM p1_run_control WHERE job_id IN (?,?) ORDER BY job_id",
+                    "SELECT * FROM runs WHERE id IN (?,?) ORDER BY id",
                     run_ids,
                 ).fetchall()
             ],
             "attempts": [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM p1_generation_attempts WHERE id IN (?,?) ORDER BY id",
+                    "SELECT * FROM generation_attempts WHERE id IN (?,?) ORDER BY id",
                     (first_attempt["attemptId"], second_attempt["attemptId"]),
                 ).fetchall()
             ],
             "events": [
                 dict(row)
                 for row in connection.execute(
-                    "SELECT * FROM p1_run_events WHERE job_id IN (?,?) ORDER BY job_id,seq",
+                    "SELECT * FROM run_events WHERE run_id IN (?,?) ORDER BY run_id,seq",
                     run_ids,
                 ).fetchall()
             ],

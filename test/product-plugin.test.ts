@@ -26,6 +26,7 @@ function dependencies(options: { startError?: Error } = {}) {
     dispose: vi.fn(async () => { order.push('supervisor:dispose') }),
   }
   const coordinator = {
+    watchRun: vi.fn(() => vi.fn()),
     launchImport: vi.fn(),
     launchRetry: vi.fn(),
     dispose: vi.fn(async () => { order.push('coordinator:dispose') }),
@@ -36,11 +37,6 @@ function dependencies(options: { startError?: Error } = {}) {
     loadContract: vi.fn(() => ({
       schema: { type: 'object' }, schemaVersion: 1, schemaSha256: 'a'.repeat(64), validate: () => [],
     })),
-    createLedger: vi.fn(() => ({ records: [] }) as never),
-    installLedger: vi.fn(() => {
-      order.push('ledger:install')
-      return () => { order.push('ledger:dispose') }
-    }),
     createSupervisor: vi.fn(() => supervisor as never),
     createAdapter: vi.fn(() => ({}) as never),
     createModelSelectionResolver: vi.fn(() => resolver as never),
@@ -70,20 +66,23 @@ describe('phase1c product plugin', () => {
     expect(deps.registerRoutes).not.toHaveBeenCalled()
   })
 
-  test('registers routes before startup and disposes route, coordinator, supervisor, ledger', async () => {
-    const { deps, order, supervisor, resolver } = dependencies()
+  test('registers routes before startup and disposes route, coordinator, supervisor', async () => {
+    const { deps, order, supervisor, resolver, coordinator } = dependencies()
     const ctx = { subprocess: {} } as never
     const dispose = await applyProductPlugin(ctx, config, deps)
-    expect(order).toEqual(['routes:register', 'ledger:install', 'supervisor:start'])
+    expect(order).toEqual(['routes:register', 'supervisor:start'])
     expect(deps.createModelSelectionResolver).toHaveBeenCalledWith(ctx)
     expect(deps.createCoordinator).toHaveBeenCalledWith(
       supervisor, expect.anything(), resolver,
     )
+    const onChange = vi.fn()
+    vi.mocked(deps.registerRoutes).mock.calls[0]![2].watchRun('job_1', onChange)
+    expect(coordinator.watchRun).toHaveBeenCalledWith('job_1', onChange)
     await dispose()
     await dispose()
     expect(order).toEqual([
-      'routes:register', 'ledger:install', 'supervisor:start',
-      'routes:dispose', 'coordinator:dispose', 'supervisor:dispose', 'ledger:dispose',
+      'routes:register', 'supervisor:start',
+      'routes:dispose', 'coordinator:dispose', 'supervisor:dispose',
     ])
   })
 
@@ -91,8 +90,8 @@ describe('phase1c product plugin', () => {
     const { deps, order } = dependencies({ startError: new Error('start failed') })
     await expect(applyProductPlugin({ subprocess: {} } as never, config, deps)).rejects.toThrow('start failed')
     expect(order).toEqual([
-      'routes:register', 'ledger:install', 'supervisor:start',
-      'routes:dispose', 'coordinator:dispose', 'supervisor:dispose', 'ledger:dispose',
+      'routes:register', 'supervisor:start',
+      'routes:dispose', 'coordinator:dispose', 'supervisor:dispose',
     ])
   })
 })

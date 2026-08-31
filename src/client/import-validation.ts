@@ -1,7 +1,7 @@
 import type { ImportTextInput } from './types.js'
 
-export const MAX_DOCUMENT_BYTES = 65_536
-export const PRODUCT_BODY_LIMIT_BYTES = 512 * 1024
+export const MAX_DOCUMENT_BYTES = 512 * 1024
+export const PRODUCT_BODY_LIMIT_BYTES = 8 * 1024 * 1024
 
 export type ImportValidationError =
   | 'EMPTY_TEXT'
@@ -25,7 +25,7 @@ function validFilename(filename: string): boolean {
     && filename !== '.'
     && filename !== '..'
     && !/[\\/\0]/.test(filename)
-    && /\.(?:txt|md)$/i.test(filename)
+    && /\.(?:txt|md|pdf)$/i.test(filename)
 }
 
 export function validateImport(input: ImportTextInput): ImportValidation {
@@ -35,7 +35,7 @@ export function validateImport(input: ImportTextInput): ImportValidation {
   if (input.text.length === 0) errors.push('EMPTY_TEXT')
   if (byteSize > MAX_DOCUMENT_BYTES) errors.push('TEXT_TOO_LARGE')
   if (!validFilename(input.filename)) errors.push('FILENAME_INVALID')
-  if (input.mediaType !== 'text/plain' && input.mediaType !== 'text/markdown') {
+  if (input.mediaType !== 'text/plain' && input.mediaType !== 'text/markdown' && input.mediaType !== 'application/pdf') {
     errors.push('MEDIA_TYPE_INVALID')
   }
   if (encoder.encode(JSON.stringify(input)).byteLength > PRODUCT_BODY_LIMIT_BYTES) {
@@ -45,12 +45,14 @@ export function validateImport(input: ImportTextInput): ImportValidation {
 }
 
 export function mediaTypeForFile(file: Pick<File, 'name' | 'type'>): ImportTextInput['mediaType'] | undefined {
-  const extension = file.name.toLowerCase().match(/\.(txt|md)$/)?.[1]
+  const extension = file.name.toLowerCase().match(/\.(txt|md|pdf)$/)?.[1]
   if (file.type === '') {
     if (extension === 'txt') return 'text/plain'
     if (extension === 'md') return 'text/markdown'
+    if (extension === 'pdf') return 'application/pdf'
     return undefined
   }
+  if (file.type === 'application/pdf' && extension === 'pdf') return 'application/pdf'
   if (file.type === 'text/plain' && extension === 'txt') return 'text/plain'
   if (file.type === 'text/markdown' && extension === 'md') return 'text/markdown'
   return undefined

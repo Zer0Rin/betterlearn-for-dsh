@@ -115,16 +115,10 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 data_root, ownership_token = parsed
                 package_root = Path(__file__).resolve().parents[2]
-                migrations_root = Path(__file__).resolve().parent / "sql" / "v8"
-                phase1_schema_path = (
-                    Path(__file__).resolve().parent / "sql" / "phase1_schema.sql"
-                )
                 contract = load_candidate_contract(package_root)
                 database = Phase1Database.open(
                     data_root,
                     ownership_token,
-                    migrations_root,
-                    phase1_schema_path,
                 )
                 status = serve(RpcDispatcher(Phase1Core(database, contract)))
         except _SignalExit as requested:

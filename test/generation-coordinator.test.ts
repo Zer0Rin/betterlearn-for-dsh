@@ -42,6 +42,7 @@ const prepared = (runId = 'run_1', attemptId = 'attempt_1'): PreparedGeneration 
 })
 
 function harness(options: {
+  extractionPlan?: PreparedGeneration['extractionPlan']
   prepareError?: Error
   submitError?: Error
   failError?: Error
@@ -63,7 +64,7 @@ function harness(options: {
     async importAndPrepare(params: unknown) {
       facts.imports.push(params)
       if (options.prepareError) throw options.prepareError
-      return prepared()
+      return { ...prepared(), ...(options.extractionPlan ? { extractionPlan: options.extractionPlan } : {}) }
     },
     async retryAndPrepare(params: any) {
       facts.retries.push(params)
@@ -121,6 +122,25 @@ afterEach(() => {
 })
 
 describe('GenerationCoordinator', () => {
+  test.each([true, false])('notifies only the subscribed run after Core finalizes (success=%s)', async success => {
+    const { coordinator, outcome, facts } = harness()
+    const changed = vi.fn(() => expect(facts.submits.length + facts.fails.length).toBe(1))
+    const other = vi.fn()
+    const unsubscribe = coordinator.watchRun('run_1', changed)
+    coordinator.watchRun('run_2', other)
+    const removed = vi.fn()
+    coordinator.watchRun('run_1', removed)()
+    await coordinator.launchImport(importParams())
+    expect(changed).not.toHaveBeenCalled()
+    outcome.resolve(success ? { ok: true, value: {} } : { ok: false, code: 'GENERATION_PROVIDER_ERROR' })
+    await vi.waitFor(() => expect(coordinator.activeCount).toBe(0))
+    expect(changed).toHaveBeenCalledOnce()
+    expect(other).not.toHaveBeenCalled()
+    expect(removed).not.toHaveBeenCalled()
+    unsubscribe()
+    await coordinator.dispose()
+  })
+
   test('reserves globally before Core writes and does not bind work to the browser signal', async () => {
     const { coordinator, facts } = harness()
     const browser = new AbortController()
@@ -250,4 +270,19 @@ describe('GenerationCoordinator', () => {
     expect(facts.starts).toEqual([])
     expect(coordinator.activeCount).toBe(0)
   })
+})
+
+
+test('long attempt timeout scales to explicit call budget, with no partial submission', async () => {
+  vi.useFakeTimers()
+  const { coordinator, facts, outcome } = harness({ extractionPlan: { strategy: 'L2', blocks: [], containers: [], boundaries: [], maxCalls: 3 } })
+  await coordinator.launchImport(importParams())
+  await vi.advanceTimersByTimeAsync(GENERATION_TIMEOUT_MS)
+  expect(facts.fails).toEqual([])
+  await vi.advanceTimersByTimeAsync(GENERATION_TIMEOUT_MS * 2)
+  expect(facts.fails).toEqual([expect.objectContaining({ code: 'GENERATION_TIMEOUT' })])
+  expect(facts.submits).toEqual([])
+  outcome.resolve({ ok: false, code: 'GENERATION_PROVIDER_ERROR' })
+  await flush()
+  await coordinator.dispose()
 })

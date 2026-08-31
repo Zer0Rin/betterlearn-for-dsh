@@ -9,7 +9,6 @@ from nobei_core.constants import (
     ALLOWED_TRANSITIONS,
     EVENT_TYPES,
     GENERATION_RETRYABILITY,
-    JOB_PROJECTION,
     MAX_DOCUMENT_BYTES,
     MAX_EVENT_PAYLOAD_BYTES,
     MAX_IDEMPOTENCY_RESULT_BYTES,
@@ -22,20 +21,6 @@ from nobei_core.constants import (
 )
 from nobei_core.errors import CoreProblem
 from nobei_core.ids import new_opaque_id, require_idempotency_key, require_opaque_id
-
-
-def test_projection_covers_every_run_state_once():
-    assert JOB_PROJECTION == {
-        "created": ("source", "pending"),
-        "document_ready": ("parse", "pending"),
-        "awaiting_generation": ("extract", "pending"),
-        "generating": ("extract", "running"),
-        "validating": ("verify", "running"),
-        "review_pending": ("confirm", "done"),
-        "completed": ("done", "done"),
-        "failed_retryable": ("failed", "failed"),
-        "failed_terminal": ("failed", "failed"),
-    }
 
 
 def test_transition_graph_is_closed():
@@ -53,12 +38,11 @@ def test_transition_graph_is_closed():
 
 
 def test_constants_with_mapping_values_are_immutable():
-    assert isinstance(JOB_PROJECTION, MappingProxyType)
     assert isinstance(ALLOWED_TRANSITIONS, MappingProxyType)
     assert isinstance(RPC_METHODS, MappingProxyType)
     assert isinstance(GENERATION_RETRYABILITY, MappingProxyType)
     with pytest.raises(TypeError):
-        JOB_PROJECTION["new"] = ("stage", "status")  # type: ignore[index]
+        ALLOWED_TRANSITIONS["new"] = frozenset()  # type: ignore[index]
 
 
 def test_ids_are_opaque_and_prefix_checked():
@@ -106,16 +90,17 @@ def test_event_types_are_closed():
 
 def test_limits_are_fixed_byte_limits():
     assert MAX_RETRY_COUNT == 1
-    assert MAX_DOCUMENT_BYTES == 65_536
-    assert MAX_RAW_GENERATION_OUTPUT_BYTES == 524_288
+    assert MAX_DOCUMENT_BYTES == 524_288
+    assert MAX_RAW_GENERATION_OUTPUT_BYTES == 8_388_608
     assert MAX_EVENT_PAYLOAD_BYTES == 8_192
-    assert MAX_IDEMPOTENCY_RESULT_BYTES == 65_536
-    assert RPC_LINE_MAX_BYTES == 2_097_152
+    assert MAX_IDEMPOTENCY_RESULT_BYTES == 16_777_216
+    assert RPC_LINE_MAX_BYTES == 33_554_432
 
 
 def test_rpc_methods_are_closed():
     assert RPC_METHODS == {
         "system.hello": "hello",
+        "documents.preview": "preview_document",
         "documents.import_text": "import_text",
         "documents.import_and_prepare_generation": "import_and_prepare_generation",
         "runs.prepare_generation": "prepare_generation",
@@ -148,6 +133,9 @@ def test_public_error_codes_are_closed():
             "UNSUPPORTED_MEDIA_TYPE",
             "REQUEST_TOO_LARGE",
             "INVALID_DOCUMENT",
+            "PDF_MALFORMED",
+            "PDF_ENCRYPTED",
+            "PDF_NO_TEXT",
             "INVALID_IDENTIFIER",
             "CORE_INSTANCE_CONFLICT",
             "PROTOCOL_MISMATCH",

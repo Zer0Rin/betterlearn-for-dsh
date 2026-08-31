@@ -36,7 +36,7 @@ export interface RunSnapshot {
   error: null | { code: string; retryable: boolean }
   document: {
     filename: string
-    mediaType: 'text/plain' | 'text/markdown'
+    mediaType: 'text/plain' | 'text/markdown' | 'application/pdf'
     byteSize: number
     characterCount: number
     text: string
@@ -45,7 +45,7 @@ export interface RunSnapshot {
 
 export interface ImportTextInput {
   filename: string
-  mediaType: 'text/plain' | 'text/markdown'
+  mediaType: 'text/plain' | 'text/markdown' | 'application/pdf'
   text: string
 }
 
@@ -118,7 +118,27 @@ export interface ReviewResult {
   knowledgePoint: KnowledgePointSnapshot | null
 }
 
+export interface ExtractionPlan {
+  strategy: 'L1' | 'L2' | 'L3'
+  maxCalls: number
+}
+
+export type DocumentPreviewRequest = ImportTextInput | {
+  filename: string
+  mediaType: 'application/pdf'
+  contentBase64: string
+}
+
+export interface DocumentPreview extends ImportTextInput {
+  byteSize: number
+  characterCount: number
+  pages: Array<{ page: number; textStart: number; textEnd: number }>
+  extractionPlan: ExtractionPlan
+}
+
 export interface ClientApi {
+  previewDocument?(input: DocumentPreviewRequest, signal?: AbortSignal): Promise<DocumentPreview>
+  watchRun?(runId: string, onChange: () => void): () => void
   importText(input: ImportTextRequest, signal?: AbortSignal): Promise<GenerationLaunch>
   getRun(runId: string, signal?: AbortSignal): Promise<RunSnapshot>
   listEvents(runId: string, after: number, signal?: AbortSignal): Promise<EventPage>

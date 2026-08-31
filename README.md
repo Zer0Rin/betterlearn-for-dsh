@@ -4,10 +4,11 @@ BetterLearn for DSH 是一个独立的 DSH Web 插件项目。DSH 通过 CLI 启
 
 当前版本提供一条可运行的文本学习资料提取链路：
 
-- 在 DSH WebUI 中粘贴 TXT / Markdown 文本；
+- 在 DSH WebUI 中粘贴 TXT / Markdown，或导入有文字层的 PDF；
 - 使用 DSH 当前会话选择的模型生成知识点候选；
 - 新任务会冻结当时的 provider、model 和 reasoning effort，之后修改 DSH 模型只影响新任务；
-- Python Core 对候选证据做精确定位，并维护独立 SQLite 状态；
+- 短文直接提取，长文按 L2/L3 规划与分批提取，点击前显示调用上限；
+- Python Core 对多条候选证据做逐字定位，统一文档绝对坐标，并维护独立 SQLite 状态；
 - 用户可以审核、修改、接受或拒绝候选；
 - Host 负责 DSH 集成和 Core 生命周期，业务事实仍由 Core 持有。
 
@@ -55,11 +56,17 @@ corepack pnpm@11.23.0 test:phase1b-python
 corepack pnpm@11.23.0 pack:acceptance
 ```
 
-验收脚本会自行创建临时 DSH profile。真实模型验收必须先获得明确的调用次数授权；普通构建和测试不会调用真实模型。
+验收脚本会自行创建临时 DSH profile。历史真实模型验证已封存；当前交付验收只使用 fake provider，普通构建和测试不会调用真实模型。
 
 ## 数据安全边界
 
 - 默认验证目标是仓库内的空 sentinel 目录，不依赖原 Nobei 仓库。
-- v8 基础迁移已随仓库固定在 `vendor/schema-v8/`，构建不再读取兄弟目录。
+- 仅使用产品自有的 11 张表；新库使用 `python/nobei_core/sql/001_product.sql`，不继承或迁移旧 v8 数据。
 - 正式数据库、真实 provider 响应和历史 evidence 不随仓库分发。
-- 当前插件数据库仍与旧 Nobei 正式数据模型隔离；两者是否合并属于后续产品决策。
+- 当前插件数据库与旧 Nobei 数据始终隔离；不设计合并或自动删除旧数据。
+
+## 使用与交付
+
+安装、启动、升级、备份恢复及保留数据卸载见 [安装说明](docs/install.md)。当前为单机单用户本地插件；PDF只解析文字层，不提供OCR，保存规范化正文而不是原PDF。TXT/Markdown与PDF解析正文上限512KiB，PDF文件上限5MiB。
+
+验收要求与分阶段结果见 [交付验收](docs/delivery-plan.md)。P2/P3开发期的旧fixture库不作为升级源；首次交付从最终产品schema的空目录开始，之后同schema升级保留数据。

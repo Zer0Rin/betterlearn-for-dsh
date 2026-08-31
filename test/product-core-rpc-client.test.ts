@@ -57,7 +57,7 @@ describe('FixedCoreRpcClient', () => {
   test.each([
     ['malformed JSON', '{broken}\n', 'CORE_RPC_MALFORMED_JSON'],
     ['unknown id', result(99, {}), 'CORE_RPC_UNKNOWN_ID'],
-    ['oversized frame', `${'x'.repeat(2 * 1024 * 1024 + 1)}\n`, 'CORE_RPC_MESSAGE_TOO_LARGE'],
+    ['oversized frame', `${'x'.repeat(32 * 1024 * 1024 + 1)}\n`, 'CORE_RPC_MESSAGE_TOO_LARGE'],
   ])('poisons pending requests on %s', async (_name, frame, code) => {
     const { client, input, onPoisoned } = pair()
     const pending = client.getRun({ runId: 'job_0123456789abcdefabcd' })
@@ -216,4 +216,15 @@ describe('FixedCoreRpcClient', () => {
     }
     client.close()
   })
+})
+
+
+test('preview forwards fixed RPC without import or generation', async () => {
+  const { client, input, requests } = pair()
+  const params = { filename: 'lesson.pdf', mediaType: 'application/pdf' as const, contentBase64: 'JVBERi0=' }
+  const preview = client.previewDocument(params)
+  expect(requests[0]).toMatchObject({ method: 'documents.preview', params })
+  input.write(result(1, { text: '正文😀', extractionPlan: { strategy: 'L1', maxCalls: 1 } }))
+  expect(await preview).toMatchObject({ text: '正文😀' })
+  client.close()
 })

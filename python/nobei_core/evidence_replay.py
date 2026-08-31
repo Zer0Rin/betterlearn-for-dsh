@@ -99,15 +99,15 @@ def _read_source_database(database_path: Path) -> tuple[list[str], dict[str, Any
         raw_outputs = [
             row[0]
             for row in connection.execute(
-                "SELECT raw_output_json FROM p1_generation_attempts "
+                "SELECT raw_output_json FROM generation_attempts "
                 "WHERE status='succeeded' AND raw_output_json IS NOT NULL "
-                "ORDER BY job_id,attempt_number"
+                "ORDER BY run_id,attempt_number"
             ).fetchall()
         ]
         control_rows = connection.execute(
-            "SELECT document_sha256,schema_valid_evidence_count,"
-            "exact_evidence_count,rejection_counts_json FROM p1_run_control "
-            "ORDER BY job_id"
+            "SELECT d.text_sha256,r.schema_valid_evidence_count,"
+            "r.exact_evidence_count,r.rejection_counts_json FROM runs r JOIN documents d ON d.id=r.document_id "
+            "ORDER BY r.id"
         ).fetchall()
     finally:
         connection.close()

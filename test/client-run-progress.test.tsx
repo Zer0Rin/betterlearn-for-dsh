@@ -22,6 +22,25 @@ function text(status: RunStatus) {
 }
 
 describe('phase1d run progress', () => {
+  test('reloads the long-document call budget before enabling an explicit retry', async () => {
+    vi.useFakeTimers()
+    const snapshot = run('failed_retryable')
+    snapshot.document = { ...snapshot.document, text: 'x'.repeat(9000), byteSize: 9000, characterCount: 9000 }
+    const previewDocument = vi.fn(async () => ({ ...snapshot.document, pages: [], extractionPlan: { strategy: 'L2' as const, maxCalls: 4 } }))
+    const onRetry = vi.fn()
+    let renderer!: ReturnType<typeof create>
+    act(() => { renderer = create(<RunProgress run={snapshot} busy={false} serviceUnavailable={false}
+      onRetry={onRetry} onReload={vi.fn()} onReset={vi.fn()} previewDocument={previewDocument} />) })
+    try {
+      expect(renderer.root.findByType('button').props.disabled).toBe(true)
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(JSON.stringify(renderer.toJSON())).toContain('最多再发起 4 次模型调用')
+      expect(renderer.root.findByType('button').props.disabled).toBe(false)
+      expect(onRetry).not.toHaveBeenCalled()
+      act(() => renderer.root.findByType('button').props.onClick())
+      expect(onRetry).toHaveBeenCalledOnce()
+    } finally { act(() => renderer.unmount()); vi.useRealTimers() }
+  })
   test('shows only persisted user-facing phase copy', () => {
     expect(text('generating')).toContain('正在生成候选')
     expect(text('validating')).toContain('正在校验证据')
@@ -40,10 +59,45 @@ describe('phase1d run progress', () => {
     expect(JSON.stringify(renderer.toJSON())).toContain('再发起 1 次模型调用')
     act(() => renderer.update(<RunProgress run={run('failed_terminal')} busy={false} serviceUnavailable={false}
       onRetry={vi.fn()} onReload={vi.fn()} onReset={vi.fn()} />))
-    expect(JSON.stringify(renderer.toJSON())).toContain('返回修改内容')
+    expect(JSON.stringify(renderer.toJSON())).toContain('返回导入')
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('材料需要调整')
     act(() => renderer.update(<RunProgress run={run('generating')} busy={false} serviceUnavailable
       onRetry={vi.fn()} onReload={vi.fn()} onReset={vi.fn()} />))
-    expect(JSON.stringify(renderer.toJSON())).toContain('服务正在恢复')
+    expect(JSON.stringify(renderer.toJSON())).toContain('暂时无法连接')
+    expect(JSON.stringify(renderer.toJSON())).toContain('不会重新提取或调用模型')
     expect(JSON.stringify(renderer.toJSON())).toContain('重新连接')
   })
+})
+
+
+test('transient plan preview failure can be retried without invoking extraction', async () => {
+  vi.useFakeTimers()
+  const snapshot = run('failed_retryable')
+  snapshot.document = { ...snapshot.document, text: 'x'.repeat(9000), byteSize: 9000, characterCount: 9000 }
+  const previewDocument = vi.fn()
+    .mockRejectedValueOnce(new Error('CORE_UNAVAILABLE'))
+    .mockResolvedValueOnce({ ...snapshot.document, pages: [], extractionPlan: { strategy: 'L2', maxCalls: 4 } })
+  const onRetry = vi.fn()
+  let renderer!: ReturnType<typeof create>
+  act(() => { renderer = create(<RunProgress run={snapshot} busy={false} serviceUnavailable={false}
+    onRetry={onRetry} onReload={vi.fn()} onReset={vi.fn()} previewDocument={previewDocument} />) })
+  const extractionButton = () => renderer.root.findAllByType('button').find(button => button.children.includes('重新提取'))!
+  try {
+    await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+    expect(previewDocument).toHaveBeenCalledTimes(1)
+    expect(extractionButton().props.disabled).toBe(true)
+    const refresh = renderer.root.findAllByType('button').find(button => button.children.includes('重新读取提取计划'))!
+    expect(refresh.props.disabled).toBeFalsy()
+    act(() => refresh.props.onClick())
+    expect(extractionButton().props.disabled).toBe(true)
+    expect(onRetry).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+    expect(previewDocument).toHaveBeenCalledTimes(2)
+    expect(previewDocument.mock.calls[1][0]).toEqual(previewDocument.mock.calls[0][0])
+    expect(extractionButton().props.disabled).toBe(false)
+    expect(JSON.stringify(renderer.toJSON())).toContain('最多再发起 4 次模型调用')
+    expect(onRetry).not.toHaveBeenCalled()
+    act(() => extractionButton().props.onClick())
+    expect(onRetry).toHaveBeenCalledOnce()
+  } finally { act(() => renderer.unmount()); vi.useRealTimers() }
 })

@@ -1,6 +1,7 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, test, vi } from 'vitest'
 import { ImportWorkspace } from '../src/client/components/ImportWorkspace.js'
+import type { DocumentPreview, DocumentPreviewRequest } from '../src/client/types.js'
 
 const fixedNow = new Date('2026-08-29T12:00:00+08:00')
 const modelSelection = { provider: 'provider-a', model: 'model-a', reasoningEffort: 'high' }
@@ -28,6 +29,70 @@ async function chooseFile(renderer: ReactTestRenderer, file: File) {
 }
 
 describe('phase1d import workspace', () => {
+  test('previews PDF without starting generation and submits canonical text only after click', async () => {
+    vi.useFakeTimers()
+    const preview: DocumentPreview = { filename: '教材.pdf', mediaType: 'application/pdf', text: '中文原文\n第二页',
+      byteSize: 22, characterCount: 8, pages: [{ page: 1, textStart: 0, textEnd: 4 }],
+      extractionPlan: { strategy: 'L1', maxCalls: 1 } }
+    const previewDocument = vi.fn(async (_input: DocumentPreviewRequest) => preview)
+    const { renderer, onSubmit } = render({ previewDocument })
+    try {
+      await chooseFile(renderer, new File(['%PDF-test'], '教材.pdf', { type: 'application/pdf' }))
+      expect(previewDocument.mock.calls[0][0]).toEqual({
+        filename: '教材.pdf', mediaType: 'application/pdf', contentBase64: btoa('%PDF-test'),
+      })
+      expect(onSubmit).not.toHaveBeenCalled()
+      expect(button(renderer, '开始提取').props.disabled).toBe(true)
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(renderer.root.findByProps({ 'data-testid': 'nobei-file-preview' }).children).toEqual([preview.text])
+      expect(button(renderer, '开始提取').props.disabled).toBe(false)
+      await act(async () => renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }))
+      expect(onSubmit).toHaveBeenCalledWith({ filename: '教材.pdf', mediaType: 'application/pdf', text: preview.text })
+    } finally { act(() => renderer.unmount()); vi.useRealTimers() }
+  })
+
+  test('requires the current long-text plan, ignores stale previews and reports scan errors', async () => {
+    vi.useFakeTimers()
+    let finish!: (value: DocumentPreview) => void
+    const previewDocument = vi.fn((_input: DocumentPreviewRequest) => new Promise<DocumentPreview>(resolve => { finish = resolve }))
+    const { renderer, onSubmit } = render({ previewDocument })
+    try {
+      act(() => button(renderer, '粘贴文本').props.onClick())
+      const setText = (value: string) => act(() => renderer.root.findByProps({ 'data-testid': 'nobei-paste-text' }).props.onChange({ currentTarget: { value } }))
+      setText('长'.repeat(8000))
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      const oldFinish = finish
+      setText('新'.repeat(9000))
+      await act(async () => oldFinish({ filename: 'old.md', mediaType: 'text/markdown', text: 'old', byteSize: 3, characterCount: 3, pages: [], extractionPlan: { strategy: 'L1', maxCalls: 1 } }))
+      expect(button(renderer, '开始提取').props.disabled).toBe(true)
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      await act(async () => finish({ filename: 'new.md', mediaType: 'text/markdown', text: '新'.repeat(9000), byteSize: 27000, characterCount: 9000, pages: [], extractionPlan: { strategy: 'L2', maxCalls: 5 } }))
+      expect(renderer.root.findByProps({ 'data-testid': 'nobei-extraction-plan' }).children.join('')).toContain('L2 · 点击“开始提取”会发起最多 5 次模型调用')
+      expect(button(renderer, '开始提取').props.disabled).toBe(false)
+      expect(onSubmit).not.toHaveBeenCalled()
+      act(() => button(renderer, '选择文件').props.onClick())
+      previewDocument.mockRejectedValueOnce(new Error('PDF_NO_TEXT'))
+      await chooseFile(renderer, new File(['scan'], '扫描.pdf', { type: 'application/pdf' }))
+      expect(renderer.root.findByProps({ role: 'alert' }).children.join('')).toContain('OCR')
+      expect(button(renderer, '开始提取').props.disabled).toBe(true)
+    } finally { act(() => renderer.unmount()); vi.useRealTimers() }
+  })
+
+  test('changing files clears the old draft while the new read is pending', async () => {
+    const { renderer } = render()
+    await chooseFile(renderer, new File(['旧正文'], 'old.txt', { type: 'text/plain' }))
+    expect(button(renderer, '开始提取').props.disabled).toBe(false)
+    let finish!: (text: string) => void
+    const file = { name: 'new.txt', type: 'text/plain', size: 6, text: () => new Promise<string>(resolve => { finish = resolve }) } as File
+    await chooseFile(renderer, file)
+    expect(button(renderer, '开始提取').props.disabled).toBe(true)
+    expect(renderer.root.findAllByProps({ 'data-testid': 'nobei-file-name' })).toHaveLength(0)
+    await chooseFile(renderer, new File(['当前正文'], 'current.txt', { type: 'text/plain' }))
+    await act(async () => finish('已经过期'))
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-file-preview' }).children).toEqual(['当前正文'])
+    act(() => renderer.unmount())
+  })
+
   test('shows the current DSH model and the one-call authorization boundary', () => {
     const { renderer } = render()
     const output = JSON.stringify(renderer.toJSON())
@@ -101,13 +166,13 @@ describe('phase1d import workspace', () => {
     expect(onSubmit).toHaveBeenCalledWith({ filename: '教材.txt', mediaType: 'text/plain', text: '中文🙂' })
   })
 
-  test('rejects PDF and oversized files before submission', async () => {
+  test('rejects unavailable PDF preview and oversized files before submission', async () => {
     const { renderer, onSubmit } = render()
     await chooseFile(renderer, new File(['pdf'], '教材.pdf', { type: 'application/pdf' }))
-    expect(renderer.root.findByProps({ role: 'alert' }).children.join('')).toContain('TXT 或 Markdown')
+    expect(renderer.root.findByProps({ role: 'alert' }).children.join('')).toContain('无法预览')
     expect(button(renderer, '开始提取').props.disabled).toBe(true)
-    await chooseFile(renderer, new File(['a'.repeat(65_537)], '教材.txt', { type: 'text/plain' }))
-    expect(renderer.root.findByProps({ role: 'alert' }).children.join('')).toContain('65,536')
+    await chooseFile(renderer, new File(['a'.repeat(524_289)], '教材.txt', { type: 'text/plain' }))
+    expect(renderer.root.findByProps({ role: 'alert' }).children.join('')).toContain('524,288')
     expect(onSubmit).not.toHaveBeenCalled()
   })
 

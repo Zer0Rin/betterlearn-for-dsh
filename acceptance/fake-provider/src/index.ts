@@ -124,6 +124,38 @@ function delay(ms: number, signal?: AbortSignal): Promise<boolean> {
   })
 }
 
+// Only the local acceptance adapter recognizes these deterministic fixture markers.
+function messageStrings(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(messageStrings)
+  if (value && typeof value === 'object') return Object.values(value).flatMap(messageStrings)
+  return []
+}
+
+export function p3Fixture(messages: unknown): unknown | undefined {
+  const strings = messageStrings(messages)
+  const planning = strings.find(text => text.includes('Nobei semantic planning (P3).'))
+  if (planning) {
+    const blocks = JSON.parse(planning.split('BLOCKS_JSON:\n')[1]!) as Array<{ id: string; text: string }>
+    if (planning.includes('fixture:p3-invalid-plan')) return { groups: [{ blockIds: ['missing-block'] }] }
+    const groups: Array<{ blockIds: string[] }> = []
+    for (let index = 0; index < blocks.length; index += 2) groups.push({ blockIds: blocks.slice(index, index + 2).map(block => block.id) })
+    return { groups }
+  }
+  const extraction = strings.find(text => text.includes('Nobei candidate extraction (') && text.includes('SOURCE:\n'))
+  const source = extraction?.split('SOURCE:\n').slice(1).join('SOURCE:\n')
+  if (!source?.includes('P3事实：')) return undefined
+  const candidates = [...source.matchAll(/^P3事实：([^\r\n]+)$/gmu)].map(match => {
+    const start = match.index!
+    const end = start + match[0].length
+    return {
+      type: 'fact', title: match[1], statement: match[1],
+      evidence: [{ quote: match[0], prefix: Array.from(source.slice(0, start)).slice(-40).join(''), suffix: Array.from(source.slice(end)).slice(0, 40).join('') }],
+    }
+  })
+  return { schemaVersion: 1, candidates }
+}
+
 export class FakeProviderAdapter extends LlmAdapter {
   readonly nonce = randomBytes(24).toString('hex')
   readonly #fixtures: Record<string, unknown>
@@ -217,9 +249,9 @@ export class FakeProviderAdapter extends LlmAdapter {
     }
 
     const fixtureKey = Object.keys(this.#fixtures).sort().find((key) => requestText.includes(`fixture:${key}`))
-    const value = fixtureKey === undefined
+    const value = p3Fixture(options.messages) ?? (fixtureKey === undefined
       ? { schemaVersion: 1, candidates: [] }
-      : this.#fixtures[fixtureKey]
+      : this.#fixtures[fixtureKey])
     if (fixtureKey === 'three' && !await delay(1_000, options.signal)) {
       this.#records.push({ ...base, result: 'aborted' })
       yield aborted()

@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { CoreRpcError } from '../src/product/core-rpc-client.js'
 import { GenerationBusyError } from '../src/product/generation-coordinator.js'
 import { ModelSelectionResolutionError } from '../src/product/model-selection-resolver.js'
 import { registerProductRoutes, type ProductOperations } from '../src/product/routes.js'
@@ -20,6 +21,8 @@ afterEach(async () => {
 
 function operations(override: Partial<ProductOperations> = {}): ProductOperations {
   return {
+    previewDocument: vi.fn(async params => ({ ...params, text: 'preview', byteSize: 7, characterCount: 7, pages: [], extractionPlan: { strategy: 'L1', blocks: [], containers: [], boundaries: [], maxCalls: 1 } })) as any,
+    watchRun: vi.fn(() => vi.fn()),
     launchImport: vi.fn(async () => ({ runId, attemptId: `att_${'d'.repeat(20)}`, revision: 2 })),
     getRun: vi.fn(async () => ({ runId, documentId: `doc_${'e'.repeat(20)}`, status: 'generating', stage: 'extract', revision: 2, retryCount: 0, lastEventSeq: 2 })),
     listEvents: vi.fn(async () => ({ events: [], nextAfter: 0 })),
@@ -42,7 +45,7 @@ async function listen(state: CoreState, ops: ProductOperations) {
       return vi.fn()
     },
   }
-  registerProductRoutes({ webServer } as never, supervisor, ops)
+  const dispose = registerProductRoutes({ webServer } as never, supervisor, ops)
   const server = createServer((req, res) => void Promise.resolve(handler(req, res)))
   servers.add(server)
   await new Promise<void>((resolve, reject) => {
@@ -50,7 +53,7 @@ async function listen(state: CoreState, ops: ProductOperations) {
     server.listen(0, '127.0.0.1', resolve)
   })
   webServer.port = (server.address() as AddressInfo).port
-  return { port: webServer.port, supervisor }
+  return { port: webServer.port, supervisor, dispose }
 }
 
 async function send(port: number, input: {
@@ -93,6 +96,34 @@ const routes = [
 const states: CoreState[] = ['STARTING', 'READY', 'RESTARTING', 'DEGRADED', 'DISPOSING', 'DISPOSED']
 
 describe('product route table', () => {
+  test.each(['disconnect', 'dispose'])('streams hints without reading Core and cleans up on %s', async ending => {
+    let notify!: () => void
+    const unsubscribe = vi.fn()
+    const ops = operations({ watchRun: vi.fn((_id, listener) => { notify = listener; return unsubscribe }) })
+    const { port, dispose } = await listen('READY', ops)
+    const response = await fetch(`http://127.0.0.1:${port}/nobei/v1/runs/${runId}/stream`, {
+      headers: { origin: `http://127.0.0.1:${port}`, 'sec-fetch-site': 'same-origin' },
+    })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    // Initial hint covers completion before the subscription was established.
+    expect(decoder.decode((await reader.read()).value)).toBe('event: run.changed\ndata: {}\n\n')
+    notify()
+    expect(decoder.decode((await reader.read()).value)).toBe('event: run.changed\ndata: {}\n\n')
+    expect(ops.getRun).not.toHaveBeenCalled()
+    expect(ops.listEvents).not.toHaveBeenCalled()
+    if (ending === 'dispose') {
+      dispose()
+      expect((await reader.read()).done).toBe(true)
+    } else {
+      await reader.cancel()
+    }
+    await vi.waitFor(() => expect(unsubscribe).toHaveBeenCalledOnce())
+    dispose()
+  })
+
   test.each(routes.flatMap((route) => states.map((state) => [route, state] as const)))(
     '$state route matrix',
     async (route, state) => {
@@ -204,5 +235,36 @@ describe('product route table', () => {
     const failed = await send(second.port, routes[0])
     expect(failed.status).toBe(422)
     expect(failed.body).toEqual({ ok: false, error: { code: 'MODEL_SELECTION_INVALID' } })
+  })
+})
+
+
+describe('P3 document preview', () => {
+  test.each([
+    { filename: 'long.txt', mediaType: 'text/plain', text: '😀'.repeat(20000) },
+    { filename: 'lesson.pdf', mediaType: 'application/pdf', contentBase64: 'JVBERi0=' },
+    { filename: 'lesson.pdf', mediaType: 'application/pdf', text: '已解析正文😀' },
+  ])('forwards readonly preview and plan without generation: $filename', async body => {
+    const ops = operations()
+    const { port } = await listen('READY', ops)
+    const response = await send(port, { method: 'POST', path: '/nobei/v1/documents/preview', body: JSON.stringify(body) })
+    expect(response.status).toBe(200)
+    expect(ops.previewDocument).toHaveBeenCalledWith(body)
+    expect(ops.launchImport).not.toHaveBeenCalled()
+    expect(response.body.result.extractionPlan.maxCalls).toBe(1)
+  })
+  test.each(['PDF_MALFORMED', 'PDF_ENCRYPTED', 'PDF_NO_TEXT'])('preserves %s for client explanation', async code => {
+    const ops = operations({ previewDocument: vi.fn(async () => { throw new CoreRpcError(code) }) })
+    const { port } = await listen('READY', ops)
+    const response = await send(port, { method: 'POST', path: '/nobei/v1/documents/preview', body: JSON.stringify({ filename: 'lesson.pdf', mediaType: 'application/pdf', contentBase64: 'JVBERi0=' }) })
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe(code)
+  })
+  test('rejects text above512KiB before Core', async () => {
+    const ops = operations()
+    const { port } = await listen('READY', ops)
+    const response = await send(port, { method: 'POST', path: '/nobei/v1/documents/preview', body: JSON.stringify({ filename: 'large.txt', mediaType: 'text/plain', text: 'x'.repeat(512 * 1024 + 1) }) })
+    expect(response.status).toBe(400)
+    expect(ops.previewDocument).not.toHaveBeenCalled()
   })
 })

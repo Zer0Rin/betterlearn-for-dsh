@@ -22,6 +22,36 @@ afterEach(() => {
 })
 
 describe('phase1d Client API', () => {
+  test('previews a PDF through a same-origin read-only product operation', async () => {
+    const fetchMock = vi.fn(async () => success({ text: 'canonical', extractionPlan: { strategy: 'L1', maxCalls: 1 } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const input = { filename: 'text.pdf', mediaType: 'application/pdf' as const, contentBase64: 'cGRm' }
+    const result = await createClientApi().previewDocument!(input)
+    expect(result.text).toBe('canonical')
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledWith('/nobei/v1/documents/preview', {
+      method: 'POST', body: JSON.stringify(input), headers: { 'content-type': 'application/json' }, signal: undefined,
+    })
+  })
+  test('listens to SSE hints and silently closes on disconnect', () => {
+    const stream = { addEventListener: vi.fn(), close: vi.fn(), onerror: null as null | (() => void) }
+    const EventSource = vi.fn(function () { return stream })
+    vi.stubGlobal('EventSource', EventSource)
+    const changed = vi.fn()
+    const stop = createClientApi().watchRun!('job_1', changed)
+    expect(EventSource).toHaveBeenCalledWith('/nobei/v1/runs/job_1/stream')
+    expect(stream.addEventListener).toHaveBeenCalledWith('run.changed', changed)
+    stream.onerror!()
+    expect(stream.close).toHaveBeenCalledOnce()
+    expect(changed).not.toHaveBeenCalled()
+    stop()
+  })
+
+  test('SSE is optional when EventSource is unavailable', () => {
+    vi.stubGlobal('EventSource', undefined)
+    expect(() => createClientApi().watchRun!('job_1', vi.fn())()).not.toThrow()
+  })
+
   test('maps all seven operations to exact same-origin requests', async () => {
     const fetchMock = vi.fn(async () => success({}))
     vi.stubGlobal('fetch', fetchMock)

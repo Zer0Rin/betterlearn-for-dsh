@@ -26,7 +26,9 @@
     "python/nobei_core/**/*.py",
     "python/nobei_core/sql/**/*.sql",
     "python/nobei_core/sql/**/*.json",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "bin/betterlearn.mjs",
+    "docs/install.md"
   ],
   "dsh": {
     "bundle": {
@@ -43,9 +45,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json && node scripts/build-client.mjs",
-    "pretest": "pnpm build && pnpm stage:v8",
+    "pretest": "pnpm build",
     "test": "vitest run",
-    "stage:v8": "node scripts/stage-v8-migrations.mjs",
     "test:phase1b-python": "node scripts/run-phase1b-python.mjs",
     "test:phase1b": "pnpm test && pnpm test:phase1b-python",
     "verify:phase1b": "node scripts/verify-phase1b-core.mjs",
@@ -68,26 +69,26 @@
     "accept:phase1e:a3:prepare": "node scripts/accept-phase1e-real-model.mjs prepare --batch-policy flash-low-stability",
     "accept:phase1e:a3:run": "node scripts/accept-phase1e-real-model.mjs diagnostic",
     "verify:phase1e:a3": "node scripts/verify-phase1e-real-model.mjs",
-    "prepack": "pnpm stage:v8"
+    "prepack": "pnpm build"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-attachment": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-brand": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-client-ui-model-selection": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-code-runtime": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-invariants": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-scope": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-session": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-subagent": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-subprocess": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-workflow": "0.1.0-rc.7"
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-brand": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-model-selection": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-code-runtime": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-subprocess": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.7 || 0.1.0-rc.8",
+    "@deepseek-ai/dsh-workflow": "0.1.0-rc.7 || 0.1.0-rc.8"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -128,5 +129,11 @@
     "react-test-renderer": "18.2.0",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
+  },
+  "bin": {
+    "betterlearn": "bin/betterlearn.mjs"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

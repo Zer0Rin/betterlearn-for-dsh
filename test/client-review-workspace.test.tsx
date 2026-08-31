@@ -76,16 +76,19 @@ describe('phase1d review workspace', () => {
     expect(onSelect).toHaveBeenCalledWith('b')
   })
 
-  test('renders the exact source and scrolls to a clicked evidence marker', () => {
+  test('renders the exact source and scrolls only its pane to clicked evidence', () => {
     const scrollIntoView = vi.fn()
+    const pane = { scrollTop: 0, clientHeight: 200, getBoundingClientRect: () => ({ top: 50 }) }
     const renderer = create(<EvidenceReader text={documentText} evidence={evidence} />, {
       createNodeMock(element) {
-        return element.type === 'mark' ? { scrollIntoView } : null
+        if (element.type === 'mark') return { scrollIntoView, getBoundingClientRect: () => ({ top: 350 }) }
+        return element.props['data-testid'] === 'nobei-source-text' ? pane : null
       },
     })
-    scrollIntoView.mockClear()
+    pane.scrollTop = 0
     act(() => button(renderer, '证据 2').props.onClick())
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(pane.scrollTop).toBeGreaterThan(0)
     const source = renderer.root.findByProps({ 'data-testid': 'nobei-source-text' })
     function flatten(node: ReactTestInstance | string): string {
       return typeof node === 'string' ? node : node.children.map(child => flatten(child)).join('')

@@ -129,7 +129,7 @@ async function descendantPids(rootPid) {
   return descendantPidsFromProcessTable(table, rootPid)
 }
 
-async function openNobeiView(page, runtimeRoot) {
+export async function openNobeiView(page, runtimeRoot) {
   const notice = page.getByRole('dialog', { name: 'Internal Testing Notice' })
   const noticeAppeared = await notice.waitFor({ state: 'visible', timeout: 10_000 })
     .then(() => true, () => false)

@@ -181,6 +181,19 @@ describe('phase1d composed workspace', () => {
     await vi.waitFor(() => {
       expect(renderer.root.findByProps({ role: 'alert' }).children.join('')).toContain('暂时无法连接')
     })
+    const pending = JSON.parse(storage.getItem(sessionKey('session'))!).pendingReview
+    api.reviewCandidate = vi.fn(async () => ({
+      candidate: { ...candidates[0], reviewStatus: 'accepted' },
+      run: run('completed'), knowledgePoint: null,
+    }))
+    const reconnect = renderer.root.findAllByType('button').find(node => node.children.join('') === '重新连接')!
+    expect(reconnect).toBeDefined()
+    await act(async () => reconnect.props.onClick())
+    await vi.waitFor(() => expect(api.reviewCandidate).toHaveBeenCalledOnce())
+    expect(api.reviewCandidate).toHaveBeenCalledWith(candidates[0].candidateId, {
+      ...pending.request, idempotencyKey: pending.idempotencyKey,
+    }, expect.any(AbortSignal))
+    expect(api.retryRun).not.toHaveBeenCalled()
     act(() => renderer.unmount())
   })
 

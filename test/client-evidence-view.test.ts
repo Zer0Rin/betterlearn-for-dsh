@@ -4,6 +4,13 @@ import { splitEvidence } from '../src/client/evidence-view.js'
 const base = { seq: 0, contextBefore: '甲', contextAfter: '丁' }
 
 describe('phase1d evidence segmentation', () => {
+  test('uses Core code-point offsets when supplementary Unicode precedes or belongs to evidence', () => {
+    const text = '😀前文\n甲🙂证据\n尾😀'
+    const segments = splitEvidence(text, { ...base, quote: '甲🙂证据', textStart: 4, textEnd: 8 })
+    expect(segments.map(segment => segment.text).join('')).toBe(text)
+    expect(segments[1]).toEqual({ kind: 'evidence', text: '甲🙂证据', start: 4, end: 8 })
+    expect(segments[2]).toEqual({ kind: 'plain', text: '\n尾😀', start: 8, end: 11 })
+  })
   test('preserves exact text around a half-open evidence span', () => {
     const segments = splitEvidence('甲乙丙丁', {
       ...base, quote: '乙丙', textStart: 1, textEnd: 3,

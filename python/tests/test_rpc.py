@@ -18,7 +18,7 @@ from nobei_core.contract import load_candidate_contract
 from nobei_core.database import Phase1Database
 from nobei_core.rpc import RpcDispatcher, serve
 
-from conftest import MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH, PYTHON_ROOT
+from conftest import PYTHON_ROOT
 
 
 PACKAGE_ROOT = PYTHON_ROOT.parent
@@ -224,7 +224,7 @@ def test_public_error_data_is_flattened_and_bounded(
     request = _request(
         "too-large-document",
         "documents.import_text",
-        {"filename": "chapter.txt", "mediaType": "text/plain", "text": "x" * 65_537},
+        {"filename": "chapter.txt", "mediaType": "text/plain", "text": "x" * 524_289},
     )
     with _core_process(owned_root, ownership_token) as process:
         _send(process, _hello(contract.schema_sha256))
@@ -237,8 +237,8 @@ def test_public_error_data_is_flattened_and_bounded(
         "too-large-document",
         -32000,
         "REQUEST_TOO_LARGE",
-        actualBytes=65_537,
-        maxBytes=65_536,
+        actualBytes=524_289,
+        maxBytes=524_288,
     )
     assert process.returncode == 0
     assert stdout == stderr == b""
@@ -450,9 +450,9 @@ def test_fatal_framing_stops_before_a_following_valid_request(
     assert stdout == b""
     assert stderr == diagnostic
     assert b"Traceback" not in stderr
-    opened = Phase1Database.open(owned_root, ownership_token, MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH)
+    opened = Phase1Database.open(owned_root, ownership_token)
     try:
-        assert opened.scalar("SELECT COUNT(*) FROM p1_run_control") == 0
+        assert opened.scalar("SELECT COUNT(*) FROM runs") == 0
     finally:
         opened.close()
 
@@ -830,10 +830,10 @@ def test_real_entrypoint_startup_recovers_without_replaying_generation(
     assert run["status"] == "failed_retryable"
     assert run["error"] == {"code": "GENERATION_PROVIDER_ERROR", "retryable": True}
 
-    opened = Phase1Database.open(owned_root, ownership_token, MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH)
+    opened = Phase1Database.open(owned_root, ownership_token)
     try:
-        assert opened.scalar("SELECT COUNT(*) FROM p1_generation_attempts") == 1
-        assert opened.scalar("SELECT id FROM p1_generation_attempts") == attempt_id
+        assert opened.scalar("SELECT COUNT(*) FROM generation_attempts") == 1
+        assert opened.scalar("SELECT id FROM generation_attempts") == attempt_id
     finally:
         opened.close()
 

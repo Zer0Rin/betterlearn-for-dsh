@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import {
   GENERATION_TIMEOUT_MS,
   MAX_ACTIVE_GENERATIONS,
@@ -48,6 +49,7 @@ export class GenerationBusyError extends Error {
 }
 
 export class GenerationCoordinator {
+  readonly #changes = new EventEmitter()
   readonly #flights = new Map<string, Flight>()
   readonly #launches = new Set<Promise<unknown>>()
   readonly #transcripts: Array<{ sequence: number; coreRequestDigest: string }> = []
@@ -63,6 +65,11 @@ export class GenerationCoordinator {
 
   get activeCount(): number {
     return this.#flights.size + (this.#reserved ? 1 : 0)
+  }
+
+  watchRun(runId: string, onChange: () => void): () => void {
+    this.#changes.on(runId, onChange)
+    return () => { this.#changes.off(runId, onChange) }
   }
 
   get preparedTranscripts(): ReadonlyArray<{ sequence: number; coreRequestDigest: string }> {
@@ -100,6 +107,7 @@ export class GenerationCoordinator {
         void flight.cleanup()
       }
       await Promise.all(flights.map((flight) => flight.done))
+      this.#changes.removeAllListeners()
     })()
     return this.#disposePromise
   }
@@ -161,7 +169,7 @@ export class GenerationCoordinator {
     }
     flight.timer = setTimeout(() => {
       void this.#settle(flight, { ok: false, code: 'GENERATION_TIMEOUT' })
-    }, GENERATION_TIMEOUT_MS)
+    }, GENERATION_TIMEOUT_MS * (prepared.extractionPlan?.maxCalls ?? 1))
     flight.timer.unref?.()
 
     this.#flights.set(prepared.runId, flight)
@@ -208,6 +216,8 @@ export class GenerationCoordinator {
       await flight.cleanup()
       this.#flights.delete(flight.prepared.runId)
       flight.finishDone()
+      // A wake-up hint only; Core remains the source of the resulting state.
+      this.#changes.emit(flight.prepared.runId)
     }
   }
 

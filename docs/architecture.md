@@ -10,7 +10,7 @@ BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-
 
 ### Client
 
-- 显示粘贴导入、任务状态和候选审核界面；
+- 预览文本/PDF及实际提取计划、调用上限，显示任务状态和候选审核界面；
 - 从 DSH model directory 读取当前会话的模型选择；
 - 只在创建新任务时提交模型选择，不自行保存 DSH 设置；
 - 不持有业务数据库。
@@ -33,14 +33,15 @@ BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-
 ### SQLite
 
 - 当前为 BetterLearn 独立数据文件；
-- v8 领域表来自仓库内 `vendor/schema-v8/` 的固定迁移；
-- `p1_*` 表承载当前插件的控制状态和生成记录；
+- 11 张产品自有表，正文存 documents，没有 import_jobs 双投影或单块 chunks；
+- 原候选与审核决策分开，知识点证据统一文档绝对 Unicode 字符坐标；
+- 写事务维护计数和追加事件，读快照不重放历史或重新定位；
 - 不自动读取或修改旧项目的 `nobei.db`。
 
 ## 3. 关键不变量
 
 1. 新任务使用创建当时的 DSH 模型选择；已有任务重试不随设置变化。
-2. 每个生成 attempt 最多进入一次 provider stream；额外调用由 ledger 拒绝。
+2. L1 每 attempt 一次提取；L2/L3 按显式计划串行规划与提取，点击前显示最多调用数；运行时不使用历史 provider-ledger。
 3. 模型输出只是候选，只有通过 Schema 与证据定位后才能进入审核。
 4. 接受、修改、拒绝均由 Core 的事务和幂等键裁决。
 5. Host 崩溃后的恢复以 Core 持久状态为准。
@@ -52,7 +53,7 @@ BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-
 src/                 DSH Host 与 Web Client
 python/nobei_core/   Python Core
 contracts/           跨语言 JSON Schema
-vendor/schema-v8/    独立构建所需的固定基础迁移
+python/nobei_core/sql/ 产品schema（干净重建，不迁移旧v8）
 acceptance/          fake provider、验收夹具与空数据 sentinel
 scripts/             构建、profile 装配、验证与 replay 工具
 test/                TypeScript 测试
@@ -60,3 +61,25 @@ python/tests/         Python 测试
 ```
 
 `@nobei/dsh-phase1` 与 `nobei_core` 是当前兼容标识，不代表仓库仍依赖旧 Nobei 应用。
+
+## 5. P1.1 状态通知
+
+`GET /nobei/v1/runs/:runId/stream` 提供 SSE。连接建立时及 GenerationCoordinator 完成生成收尾后发送 `run.changed`，内容仅为 `{}`。通知不携带快照或事件游标，不读取 Core，也不保存或重放事件；连接时的提示覆盖“生成已结束，浏览器才订阅”的情况。
+
+Client 仍只有一个 pollRun 读取循环：提示打断等待，读取既有 run/events 接口；读取期间收到提示则紧接着再读一次，不并发启动第二个循环。业务状态与事件游标仍取自 Core。后台页面沿用可见性暂停，回到前台再同步。
+
+SSE 不可用或断开时关闭该连接，原有 1→2→4→8 秒轮询继续；不因通知通道故障显示生成失败。重新加载/恢复任务会重新订阅。进入审核、完成或失败状态，以及取消、切换任务、插件卸载时释放连接和监听器。Core 读取失败仍走现有“重新连接”恢复流程，不自动发起模型重试。
+
+文案约定集中于 `src/client/workspace-copy.ts`：连接失败只说明“暂时无法连接”，不承诺服务正在恢复；“重新连接”读取已有进度并按原幂等键恢复待提交审核，不调用模型；“重新提取”使用任务创建时的模型重跑计划，并显示调用上限；不可重试只陈述任务已终止，不把原因归咎于材料。终态按钮为“返回导入”，不承诺自动回填正文。
+
+## 6. P3 输入与提取
+
+`POST /nobei/v1/documents/preview` 转发只读Core方法。PDF逐页解析规范化文字并返回页的正文范围；文本直接规范化。预览不创建任务或调用模型，正文与调用计划一起供用户确认。扫描件、加密或损坏PDF明确报错。
+
+6000字符以内L1；24000以内L2；更大文档L3。物理块至多4000字符，L2由模型规划连续组，L3使用至多6块的重叠容器并提取边界。详情见 [P3提取契约](p3-extraction-contract.md)。Host只在全部调用完成后提交批次；Core按每个来源范围逐字定位，转换绝对坐标，按同type/title/statement合并证据。单次候选Schema保持不变，汇总最多1000候选、每候选64条不同证据，超限失败，不静默截断。
+
+Client任务恢复只随会话/存储生命周期发生，不随DSH模型目录对象刷新重放旧任务。显示证据时按Unicode字符切片；只滚动原文区域。候选目录与插件面板有各自滚动范围，容器宽度决定审核列布局。
+
+## 7. P4 维护边界
+
+CLI管理专用DSH profile、Python环境和插件安装，不增加后台服务。SQLite在线backup支持运行中一致备份；restore仅在显式维护时校验所选备份并持已有CoreLease，先保存当前库，再恢复。正常业务读写不会因此增加检查。卸载不删除数据库或备份。

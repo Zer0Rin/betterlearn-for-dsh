@@ -7,6 +7,8 @@ import {
   GENERATION_FINALIZE_RPC_TIMEOUT_MS,
 } from './constants.js'
 import type {
+  DocumentPreview,
+  DocumentPreviewParams,
   CandidateList,
   CoreObjectResult,
   CoreRunSnapshot,
@@ -75,6 +77,10 @@ export class FixedCoreRpcClient {
 
   hello(params: HelloParams, signal?: AbortSignal): Promise<HelloResult> {
     return this.#request<HelloResult>('system.hello', params, CORE_HANDSHAKE_TIMEOUT_MS, signal)
+  }
+
+  previewDocument(params: DocumentPreviewParams, signal?: AbortSignal): Promise<DocumentPreview> {
+    return this.#request<DocumentPreview>('documents.preview', params, CORE_WRITE_RPC_TIMEOUT_MS, signal)
   }
 
   importAndPrepare(params: ImportAndPrepareParams, signal?: AbortSignal): Promise<PreparedGeneration> {

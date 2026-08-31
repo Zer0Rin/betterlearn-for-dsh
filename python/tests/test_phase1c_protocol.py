@@ -36,11 +36,9 @@ def _import_params() -> dict[str, object]:
 def _business_state(database) -> dict[str, list[dict[str, object]]]:
     statements = {
         "documents": "SELECT * FROM documents ORDER BY id",
-        "chunks": "SELECT * FROM chunks ORDER BY id",
-        "jobs": "SELECT * FROM import_jobs ORDER BY id",
-        "runs": "SELECT * FROM p1_run_control ORDER BY job_id",
-        "attempts": "SELECT * FROM p1_generation_attempts ORDER BY id",
-        "events": "SELECT * FROM p1_run_events ORDER BY job_id,seq",
+        "runs": "SELECT * FROM runs ORDER BY id",
+        "attempts": "SELECT * FROM generation_attempts ORDER BY id",
+        "events": "SELECT * FROM run_events ORDER BY run_id,seq",
     }
     with database.read_snapshot() as connection:
         return {
@@ -104,7 +102,7 @@ def test_import_and_prepare_exposes_only_generating_attempt_one(core, database):
     assert run["status"] == "generating"
     assert run["revision"] == 2
     assert database.scalar(
-        "SELECT COUNT(*) FROM p1_generation_attempts WHERE job_id=? AND attempt_number=1",
+        "SELECT COUNT(*) FROM generation_attempts WHERE run_id=? AND attempt_number=1",
         (prepared["runId"],),
     ) == 1
 
@@ -152,7 +150,7 @@ def test_retry_and_prepare_atomically_starts_attempt_two(core, database):
     assert prepared["attemptNumber"] == 2
     assert prepared["revision"] == failed_run["revision"] + 2
     assert database.one(
-        "SELECT status,retry_count,revision FROM p1_run_control WHERE job_id=?",
+        "SELECT status,retry_count,revision FROM runs WHERE id=?",
         (run_id,),
     ) == {"status": "generating", "retry_count": 1, "revision": prepared["revision"]}
 

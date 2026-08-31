@@ -1,6 +1,10 @@
-# BetterLearn 数据模型（P2 设计）
+# BetterLearn 数据模型（设计与实现记录）
 
-> 状态：设计稿（待评审）。目标是把当前「v8 旧 Nobei 领域表 + `p1_*` 临时控制层」的双层结构，收敛为 BetterLearn 自己的长期产品模型，不再继承旧 Nobei schema。
+> 状态：P2 已实现并通过实际DSH浏览器验收。以下旧结构分析保留为改造前设计记录；当前权威表结构见 `python/nobei_core/sql/001_product.sql`。已采用产品自有11表、文档正文内联、不可变候选与独立审核、文档绝对证据坐标和写事务计数。P3输入与批次计划见 [提取契约](p3-extraction-contract.md)。不建立collections或旧应用领域表。
+
+实施补充（2026-08-31）：以下“当前现状”和评审问题属于P2实施前记录，已采用去掉p1前缀、不引入合集的设计。实际字段以SQL为准。runs持久保存有效/已修改/已拒绝等计数，pending及知识点数由这些列直接计算；读快照不扫描候选、审核历史或原始生成输出。
+
+P3使用确定性、内存中的物理范围计划，未新增持久chunks表。所有证据相对规范化正文计Unicode字符，不是JavaScript UTF-16 code unit。PDF记录规范化正文和媒体类型，不保存PDF文件或版面坐标。P4只支持最终产品schema内升级与备份恢复，不把实施中的P2/P3 fixture库作为已发布版本迁移。
 
 ## 1. 背景与目标
 
@@ -233,7 +237,7 @@ CREATE TABLE idempotency_records (
 
 ## 6. 迁移路径与决策点
 
-**决策（需确认）：因为当前数据库被守卫为「仅 fixture 数据」，P2 采用干净重建，不写数据迁移。**
+**已执行决策：P2以当时仅有fixture数据为前提，采用干净重建，不写数据迁移。最终产品库现在可保存用户材料；未知旧库不会被删除或迁移。**
 
 - 新建 `python/nobei_core/sql/` 下的产品迁移（单一 `001_product.sql` 起步），替代 `vendor/schema-v8/` + `phase1_schema.sql`。
 - `Phase1Database.open()` 的引导顺序改为：`apply_product_schema()` → `assert_schema()` → `recover_interrupted_runs()`，删除 v8 校验与 foreign-data 守卫。

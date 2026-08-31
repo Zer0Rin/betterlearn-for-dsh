@@ -10,7 +10,7 @@ from nobei_core.database import Phase1Database
 from nobei_core.ownership import initialize_owned_root
 from nobei_core.service import Phase1Core
 
-from conftest import MIGRATIONS_ROOT, PHASE1_SCHEMA_PATH, PYTHON_ROOT
+from conftest import PYTHON_ROOT
 
 
 SAMPLE_COUNT = 30
@@ -53,8 +53,6 @@ def test_real_submit_maximum_shape_has_a_measured_two_second_upper_bound(
         database = Phase1Database.open(
             owned_root,
             ownership_token,
-            MIGRATIONS_ROOT,
-            PHASE1_SCHEMA_PATH,
         )
         try:
             core = Phase1Core(database, contract)

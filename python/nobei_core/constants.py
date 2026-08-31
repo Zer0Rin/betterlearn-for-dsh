@@ -5,17 +5,17 @@ from __future__ import annotations
 from types import MappingProxyType
 
 
-JOB_PROJECTION = MappingProxyType(
+RUN_STAGES = MappingProxyType(
     {
-        "created": ("source", "pending"),
-        "document_ready": ("parse", "pending"),
-        "awaiting_generation": ("extract", "pending"),
-        "generating": ("extract", "running"),
-        "validating": ("verify", "running"),
-        "review_pending": ("confirm", "done"),
-        "completed": ("done", "done"),
-        "failed_retryable": ("failed", "failed"),
-        "failed_terminal": ("failed", "failed"),
+        "created": "source",
+        "document_ready": "parse",
+        "awaiting_generation": "extract",
+        "generating": "extract",
+        "validating": "verify",
+        "review_pending": "confirm",
+        "completed": "done",
+        "failed_retryable": "failed",
+        "failed_terminal": "failed",
     }
 )
 
@@ -36,6 +36,7 @@ ALLOWED_TRANSITIONS = MappingProxyType(
 RPC_METHODS = MappingProxyType(
     {
         "system.hello": "hello",
+        "documents.preview": "preview_document",
         "documents.import_text": "import_text",
         "documents.import_and_prepare_generation": "import_and_prepare_generation",
         "runs.prepare_generation": "prepare_generation",
@@ -61,7 +62,6 @@ GENERATION_RETRYABILITY = MappingProxyType(
 )
 
 RESOURCE_ID_PREFIXES = frozenset({"doc", "ck", "job", "att", "cand", "kp", "ev", "cfl"})
-FIXTURE_COURSE_ID = "crs_p1_fixture"
 OPAQUE_ID_HEX_LENGTH = 20
 IDEMPOTENCY_KEY_PREFIX = "idem"
 
@@ -111,6 +111,9 @@ PUBLIC_ERROR_CODES = frozenset(
         "UNSUPPORTED_MEDIA_TYPE",
         "REQUEST_TOO_LARGE",
         "INVALID_DOCUMENT",
+        "PDF_MALFORMED",
+        "PDF_ENCRYPTED",
+        "PDF_NO_TEXT",
         "INVALID_IDENTIFIER",
         "CORE_INSTANCE_CONFLICT",
         "PROTOCOL_MISMATCH",
@@ -138,11 +141,13 @@ PUBLIC_ERROR_CODES = frozenset(
 MAX_RETRY_COUNT = 1
 PHASE1E_EXPECTED_RUN_COUNT = 20
 PHASE1E_MINIMUM_EXACT_EVIDENCE_YIELD = 0.90
-MAX_DOCUMENT_BYTES = 65_536
-MAX_RAW_GENERATION_OUTPUT_BYTES = 524_288
+MAX_DOCUMENT_BYTES = 524_288
+MAX_RAW_GENERATION_OUTPUT_BYTES = 8_388_608
 MAX_EVENT_PAYLOAD_BYTES = 8_192
-MAX_IDEMPOTENCY_RESULT_BYTES = 65_536
-RPC_LINE_MAX_BYTES = 2_097_152
+# A review stores the full document snapshot, candidate, and optional knowledge point.
+# Allow JSON escaping and maximum valid review text/evidence within a bounded record.
+MAX_IDEMPOTENCY_RESULT_BYTES = 16_777_216
+RPC_LINE_MAX_BYTES = 33_554_432
 
 FILENAME_MIN_CHARS = 1
 FILENAME_MAX_CHARS = 255

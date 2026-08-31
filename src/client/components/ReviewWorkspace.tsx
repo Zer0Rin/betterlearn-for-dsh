@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CandidateSnapshot, ReviewActionDraft, RunSnapshot } from '../types.js'
 import { modelSelectionLabel } from '../model-directory-bridge.js'
 import { EvidenceReader } from './EvidenceReader.js'
+import { workspaceCopy } from '../workspace-copy.js'
 
 export interface ReviewWorkspaceProps {
   run: RunSnapshot
@@ -11,6 +12,7 @@ export interface ReviewWorkspaceProps {
   error?: string
   onSelect(candidateId: string): void
   onReview(candidate: CandidateSnapshot, request: ReviewActionDraft): Promise<boolean>
+  onReload?(): Promise<void> | void
 }
 
 const statusLabel: Record<CandidateSnapshot['reviewStatus'], string> = {
@@ -21,7 +23,7 @@ const statusLabel: Record<CandidateSnapshot['reviewStatus'], string> = {
 }
 
 export function ReviewWorkspace({
-  run, candidates, activeCandidateId, submittingCandidateId, error, onSelect, onReview,
+  run, candidates, activeCandidateId, submittingCandidateId, error, onSelect, onReview, onReload,
 }: ReviewWorkspaceProps) {
   const selected = useMemo(() => candidates.find(item => item.candidateId === activeCandidateId)
     ?? candidates.find(item => item.reviewStatus === 'pending')
@@ -84,6 +86,9 @@ export function ReviewWorkspace({
           <p>本次模型：{modelSelectionLabel(run.modelSelection)}</p>
         </header>
         {error && <p className="nobei-client__error" role="alert">{error}</p>}
+        {error && onReload && (
+          <button type="button" disabled={submitting} onClick={() => { void onReload() }}>{workspaceCopy.reconnect}</button>
+        )}
         <label htmlFor="nobei-candidate-title">标题</label>
         <input id="nobei-candidate-title" data-testid="nobei-candidate-title" value={title}
           readOnly={!editing} maxLength={120} onChange={event => setTitle(event.currentTarget.value)} />

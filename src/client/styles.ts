@@ -12,7 +12,10 @@ export const CLIENT_CSS = `
   --nobei-evidence: #D99024;
   --nobei-rejected: #B94A48;
   box-sizing: border-box;
-  min-height: 100%;
+  min-height: 0;
+  max-height: calc(100dvh - 80px);
+  overflow: auto;
+  container-type: inline-size;
   padding: clamp(18px, 3vw, 44px);
   color: var(--nobei-ink);
   background: var(--nobei-paper);
@@ -57,9 +60,9 @@ export const CLIENT_CSS = `
 .nobei-client__notice { margin-block-start: 22px; padding: 16px; border: 1px solid var(--nobei-line); border-radius: 12px; background: var(--nobei-paper); }
 .nobei-client__notice p { color: var(--nobei-muted); }
 .nobei-client__notice button { margin-block-start: 10px; border: 0; padding: 0; color: var(--nobei-action); background: transparent; font-weight: 700; }
-.nobei-client__review { display: grid; grid-template-columns: minmax(190px, 0.72fr) minmax(320px, 1fr) minmax(360px, 1.15fr); gap: 16px; align-items: start; }
+.nobei-client__review { display: grid; grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
 .nobei-client__candidate-nav, .nobei-client__candidate-card, .nobei-client__evidence-reader { border: 1px solid var(--nobei-line); border-radius: 16px; background: var(--nobei-surface); }
-.nobei-client__candidate-nav { display: grid; gap: 6px; padding: 14px; }
+.nobei-client__candidate-nav { display: grid; gap: 6px; padding: 14px; max-height: min(50vh, 600px); overflow: auto; }
 .nobei-client__candidate-nav > p { padding: 6px 8px 10px; }
 .nobei-client__candidate-nav button { display: grid; gap: 3px; width: 100%; padding: 11px; border: 1px solid transparent; border-radius: 10px; text-align: start; color: var(--nobei-ink); background: transparent; }
 .nobei-client__candidate-nav button[aria-current="true"] { border-color: var(--nobei-evidence); background: color-mix(in srgb, var(--nobei-evidence) 10%, var(--nobei-surface)); }
@@ -108,6 +111,15 @@ export const CLIENT_CSS = `
 }
 @media (prefers-reduced-motion: reduce) {
   .nobei-client *, .nobei-client *::before, .nobei-client *::after { scroll-behavior: auto; transition-duration: 0.01ms; }
+}
+@container (max-width: 900px) {
+  .nobei-client__review { grid-template-columns: minmax(150px, 0.65fr) minmax(0, 1.35fr); }
+  .nobei-client__evidence-reader { grid-column: 2; }
+}
+@container (max-width: 580px) {
+  .nobei-client__review { grid-template-columns: minmax(0, 1fr); }
+  .nobei-client__evidence-reader { grid-column: 1; }
+  .nobei-client__candidate-nav { max-height: 200px; }
 }
 `
 

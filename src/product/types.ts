@@ -25,8 +25,23 @@ export interface HelloResult {
 
 export interface ImportTextParams {
   filename: string
-  mediaType: 'text/plain' | 'text/markdown'
+  mediaType: 'text/plain' | 'text/markdown' | 'application/pdf'
   text: string
+}
+
+export type DocumentPreviewParams = ImportTextParams | { filename: string; mediaType: 'application/pdf'; contentBase64: string }
+export interface ExtractionPlan {
+  strategy: 'L1' | 'L2' | 'L3'
+  blocks: Array<{ id: string; textStart: number; textEnd: number }>
+  containers: Array<{ blockIds: string[]; textStart: number; textEnd: number }>
+  boundaries: Array<{ textStart: number; textEnd: number }>
+  maxCalls: number
+}
+export interface DocumentPreview extends ImportTextParams {
+  byteSize: number
+  characterCount: number
+  pages: Array<{ page: number; textStart: number; textEnd: number }>
+  extractionPlan: ExtractionPlan
 }
 
 export interface ModelSelectionSnapshot {
@@ -48,6 +63,7 @@ export interface PreparedGeneration {
   schemaSha256: string
   promptVersion: string
   document: { text: string; sha256: string }
+  extractionPlan?: ExtractionPlan
   requestDigest: string
   providerIdempotencyKey: string
   modelSelection: ModelSelectionSnapshot

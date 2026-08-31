@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
-import { ProviderLedger } from '../src/product/provider-ledger.js'
 import {
+  validatePlannerGroups,
   promptFor,
   promptIdentity,
   StructuredGenerationAdapter,
@@ -117,7 +117,7 @@ function fakeContext(outcome: unknown, options: {
           return {
             id: 'workflow_1',
             meta: request.meta,
-            result: workflowResult,
+            result: typeof outcome === 'function' ? Promise.resolve(outcome(request, facts.starts.length)) : workflowResult,
             cancel() { facts.workflowCancel += 1 },
             async dispose() {
               facts.workflowDispose += 1
@@ -173,7 +173,7 @@ describe('StructuredGenerationAdapter', () => {
 
   test('creates one dynamic parent/workflow and installs the final tool guard on parent and child', async () => {
     const fake = fakeContext(complete())
-    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), new ProviderLedger(), {
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), {
       packageRoot: '/owned/nobei-package',
     })
     const handle = await adapter.start(prepared, new AbortController().signal)
@@ -241,7 +241,7 @@ describe('StructuredGenerationAdapter', () => {
     ['wrong child count', { value: structured, stopReason: 'completed', agentsStarted: 2 }, contract(), 'GENERATION_PROVIDER_ERROR'],
   ])('classifies %s', async (_name, outcome, candidateContract, code) => {
     const fake = fakeContext(outcome)
-    const adapter = new StructuredGenerationAdapter(fake.ctx as never, candidateContract, new ProviderLedger(), {
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, candidateContract, {
       packageRoot: '/owned/nobei-package',
     })
     const handle = await adapter.start(prepared, new AbortController().signal)
@@ -256,7 +256,7 @@ describe('StructuredGenerationAdapter', () => {
       workflowDisposeError: new Error('workflow cleanup detail'),
       parentDisposeError: new Error('parent cleanup detail'),
     })
-    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), new ProviderLedger(), {
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), {
       packageRoot: '/owned/nobei-package',
     })
     const handle = await adapter.start(prepared, new AbortController().signal)
@@ -267,7 +267,7 @@ describe('StructuredGenerationAdapter', () => {
 
   test('maps workflow construction failure and still disposes the parent', async () => {
     const fake = fakeContext(complete(), { workflowStartError: new Error('start detail') })
-    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), new ProviderLedger(), {
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), {
       packageRoot: '/owned/nobei-package',
     })
     const handle = await adapter.start(prepared, new AbortController().signal)
@@ -278,7 +278,7 @@ describe('StructuredGenerationAdapter', () => {
 
   test('fails closed when the workflow child is not runtime-owned by the parent', async () => {
     const fake = fakeContext(complete(), { emitOwnedChild: false })
-    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), new ProviderLedger(), {
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), {
       packageRoot: '/owned/nobei-package',
     })
     const handle = await adapter.start(prepared, new AbortController().signal)
@@ -302,10 +302,11 @@ describe('StructuredGenerationAdapter', () => {
         async dispose() { fake.facts.workflowDispose += 1 },
       }
     }
-    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), new ProviderLedger(), {
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), {
       packageRoot: '/owned/nobei-package',
     })
     const handle = await adapter.start(prepared, new AbortController().signal)
+    await new Promise(resolve => setImmediate(resolve))
     handle.cancel()
     resolve(complete())
     await expect(handle.result).resolves.toEqual({ ok: false, code: 'GENERATION_PROVIDER_ERROR' })
@@ -314,5 +315,72 @@ describe('StructuredGenerationAdapter', () => {
     expect(fake.facts.workflowCancel).toBe(1)
     expect(fake.facts.workflowDispose).toBe(1)
     expect(fake.facts.parentDispose).toBe(1)
+  })
+})
+
+
+describe('P3 semantic execution', () => {
+  const longPrepared = (strategy: 'L2' | 'L3' = 'L2'): PreparedGeneration => ({
+    ...prepared, modelSelection: { ...prepared.modelSelection },
+    document: { text: '甲😀乙丙丁戊己庚', sha256: prepared.document.sha256 },
+    extractionPlan: {
+      strategy,
+      blocks: [
+        { id: 'b1', textStart: 0, textEnd: 2 }, { id: 'b2', textStart: 2, textEnd: 4 },
+        { id: 'b3', textStart: 4, textEnd: 6 }, { id: 'b4', textStart: 6, textEnd: 8 },
+      ],
+      containers: strategy === 'L2' ? [{ blockIds: ['b1', 'b2', 'b3', 'b4'], textStart: 0, textEnd: 8 }]
+        : [{ blockIds: ['b1', 'b2', 'b3'], textStart: 0, textEnd: 6 }, { blockIds: ['b3', 'b4'], textStart: 4, textEnd: 8 }],
+      boundaries: strategy === 'L3' ? [{ textStart: 2, textEnd: 6 }] : [], maxCalls: 8,
+    },
+  })
+  test.each(['L2', 'L3'] as const)('%s plans actual groups then serial extraction and boundaries with codepoint offsets', async strategy => {
+    const input = longPrepared(strategy)
+    const fake = fakeContext((request: any) => {
+      if (request.args.prompt.includes('BLOCKS_JSON:')) {
+        const blocks = JSON.parse(request.args.prompt.split('BLOCKS_JSON:\n')[1])
+        return complete({ groups: blocks.map((block: any) => ({ blockIds: [block.id] })) })
+      }
+      return complete(structured)
+    })
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), { packageRoot: '/owned' })
+    const handle = await adapter.start(input, new AbortController().signal)
+    input.modelSelection.model = 'changed-after-start'
+    const result = await handle.result
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const batches = result.value.batches as any[]
+    expect(batches.map(batch => [batch.textStart, batch.textEnd])).toEqual(strategy === 'L2'
+      ? [[0, 2], [2, 4], [4, 6], [6, 8]] : [[0, 2], [2, 4], [4, 6], [4, 6], [6, 8], [2, 6]])
+    expect(fake.facts.starts[1].args.prompt).toContain('SOURCE:\n甲😀')
+    expect(fake.facts.create.every(create => create.agentOptions.model === 'model-fixture')).toBe(true)
+    expect(fake.facts.workflowDispose).toBe(fake.facts.starts.length)
+    expect(fake.facts.parentDispose).toBe(fake.facts.starts.length)
+    expect(fake.facts.starts.map(call => call.args.prompt.includes('BLOCKS_JSON:') ? 'plan' : 'extract')).toEqual(strategy === 'L2'
+      ? ['plan', 'extract', 'extract', 'extract', 'extract']
+      : ['plan', 'extract', 'extract', 'extract', 'plan', 'extract', 'extract', 'extract'])
+  })
+  test.each([
+    { groups: [{ blockIds: ['b1', 'b2', 'b3', 'b4'] }] },
+    { groups: [{ blockIds: ['b1'] }] },
+    { groups: [{ blockIds: ['b2', 'b1'] }, { blockIds: ['b3', 'b4'] }] },
+    { groups: [{ blockIds: ['b1', 'b2'] }, { blockIds: ['b2', 'b3', 'b4'] }] },
+    { groups: [{ blockIds: ['missing'] }] },
+    { groups: [] },
+  ])('invalid planning produces no extraction or partial output: %j', async value => {
+    expect(validatePlannerGroups(value, ['b1', 'b2', 'b3', 'b4'])).toBeUndefined()
+    const fake = fakeContext(complete(value))
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), { packageRoot: '/owned' })
+    const handle = await adapter.start(longPrepared(), new AbortController().signal)
+    expect(await handle.result).toEqual({ ok: false, code: 'GENERATION_SCHEMA_INVALID' })
+    expect(fake.facts.starts).toHaveLength(1)
+  })
+  test('cancelling during planning starts no extraction', async () => {
+    const controller = new AbortController()
+    const fake = fakeContext(() => { controller.abort(); return complete({ groups: [{ blockIds: ['b1', 'b2'] }, { blockIds: ['b3', 'b4'] }] }) })
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), { packageRoot: '/owned' })
+    const handle = await adapter.start(longPrepared(), controller.signal)
+    expect(await handle.result).toEqual({ ok: false, code: 'GENERATION_PROVIDER_ERROR' })
+    expect(fake.facts.starts).toHaveLength(1)
   })
 })

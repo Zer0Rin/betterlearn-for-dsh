@@ -10,6 +10,7 @@ import { modelSelectionLabel, type ModelDirectoryResolverPort } from './model-di
 import { ensureClientStyles } from './styles.js'
 import type { ClientApi } from './types.js'
 import { useNobeiWorkspace } from './use-nobei-workspace.js'
+import { workspaceCopy } from './workspace-copy.js'
 
 export interface NobeiWorkspaceProps {
   sessionId: string
@@ -28,9 +29,10 @@ export function NobeiWorkspace({
   })
   const sourceName = workspace.run?.document.filename ?? '新的学习材料'
   const activeModel = workspace.run?.modelSelection ?? workspace.modelSelection
-  const unavailableMessage = workspace.serviceUnavailable ? 'Nobei 暂时无法连接，请稍后重试。' : undefined
+  const unavailableMessage = workspace.serviceUnavailable ? workspaceCopy.unavailable : undefined
   const operationError = unavailableMessage
-    ?? (workspace.screen === 'import' || workspace.message === '暂时无法完成操作，请重试。'
+    ?? (workspace.screen === 'import' || workspace.message === workspaceCopy.operationFailed
+      || workspace.message === workspaceCopy.reviewUnconfirmed
       ? workspace.message
       : undefined)
   return (
@@ -47,17 +49,17 @@ export function NobeiWorkspace({
       </header>
       <div className="nobei-client__workspace" data-workspace-screen={workspace.screen}>
         {workspace.screen === 'import' && <ImportWorkspace submitting={workspace.busy}
-          error={operationError} onSubmit={workspace.importText}
+          error={operationError} onSubmit={workspace.importText} previewDocument={api.previewDocument}
           modelSelection={workspace.modelSelection} modelStatus={workspace.modelDirectoryStatus}
           ordinarySession={workspace.ordinarySession} />}
         {workspace.screen === 'processing' && <RunProgress run={workspace.run} busy={workspace.busy}
           serviceUnavailable={workspace.serviceUnavailable} message={workspace.message}
-          onRetry={workspace.retry} onReload={workspace.reload} onReset={workspace.reset} />}
+          previewDocument={api.previewDocument} onRetry={workspace.retry} onReload={workspace.reload} onReset={workspace.reset} />}
         {workspace.screen === 'review' && workspace.run && <ReviewWorkspace run={workspace.run}
           candidates={workspace.candidates} activeCandidateId={workspace.activeCandidateId}
           submittingCandidateId={workspace.submittingCandidateId}
           error={operationError}
-          onSelect={workspace.selectCandidate} onReview={workspace.review} />}
+          onSelect={workspace.selectCandidate} onReview={workspace.review} onReload={workspace.reload} />}
         {workspace.screen === 'result' && workspace.run && <ResultSummary run={workspace.run}
           candidates={workspace.candidates} knowledgePoints={workspace.knowledgePoints}
           onReset={workspace.reset} />}

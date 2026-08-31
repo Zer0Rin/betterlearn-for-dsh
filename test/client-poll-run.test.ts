@@ -65,15 +65,60 @@ function deferred<T>() {
 }
 
 describe('phase1d run polling', () => {
+  test('a change hint wakes a sleeping poller and closes the stream at review', async () => {
+    let notify!: () => void
+    const close = vi.fn()
+    const sleeping = deferred<void>()
+    const getRun = vi.fn().mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot('review_pending'))
+    const client = api(getRun, async () => page(0))
+    client.watchRun = (_id, listener) => { notify = listener; return close }
+    const plan = scheduler()
+    plan.sleep = async (_ms, signal) => new Promise<void>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })
+      sleeping.resolve()
+    })
+    const updates: RunStatus[] = []
+    const polling = pollRun({ api: client, runId: 'job_1', after: 0,
+      signal: new AbortController().signal, scheduler: plan,
+      onUpdate: update => updates.push(update.run.status) })
+    await sleeping.promise
+    notify()
+    await polling
+    expect(updates).toEqual(['generating', 'review_pending'])
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  test('a hint during a read is not lost and does not start a concurrent read', async () => {
+    let notify!: () => void
+    const first = deferred<RunSnapshot>()
+    const getRun = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(snapshot('completed'))
+    const client = api(getRun, async () => page(0))
+    client.watchRun = (_id, listener) => { notify = listener; return vi.fn() }
+    const plan = scheduler()
+    const polling = pollRun({ api: client, runId: 'job_1', after: 0,
+      signal: new AbortController().signal, scheduler: plan, onUpdate: vi.fn() })
+    notify()
+    notify()
+    expect(getRun).toHaveBeenCalledOnce()
+    first.resolve(snapshot())
+    await polling
+    expect(getRun).toHaveBeenCalledTimes(2)
+    expect(plan.delays).toEqual([])
+  })
+
   test('polls immediately and backs off empty pages to 1/2/4/8 seconds', async () => {
     const controller = new AbortController()
     const plan = scheduler({ abort: controller, abortAfterSleeps: 5 })
     const getRun = vi.fn(async () => snapshot())
     const listEvents = vi.fn(async (_runId: string, after: number) => page(after))
-    await pollRun({ api: api(getRun, listEvents), runId: 'job_1', after: 0,
+    const close = vi.fn()
+    const client = api(getRun, listEvents)
+    client.watchRun = () => close // A silent/dropped stream must not suppress fallback polling.
+    await pollRun({ api: client, runId: 'job_1', after: 0,
       signal: controller.signal, scheduler: plan, onUpdate: vi.fn() })
     expect(getRun).toHaveBeenCalledTimes(5)
     expect(plan.delays).toEqual([1000, 2000, 4000, 8000, 8000])
+    expect(close).toHaveBeenCalledOnce()
   })
 
   test('resets the next delay after receiving events', async () => {
@@ -121,9 +166,13 @@ describe('phase1d run polling', () => {
       return oldEvents.promise
     })
     const oldUpdate = vi.fn()
-    const oldPoll = pollRun({ api: api(getRun, listEvents), runId: 'job_1', after: 0,
+    const close = vi.fn()
+    const client = api(getRun, listEvents)
+    client.watchRun = () => close
+    const oldPoll = pollRun({ api: client, runId: 'job_1', after: 0,
       signal: controller.signal, scheduler: scheduler(), onUpdate: oldUpdate })
     controller.abort()
+    expect(close).toHaveBeenCalledOnce()
     oldRun.resolve(snapshot('completed'))
     oldEvents.resolve(page(0))
     await oldPoll

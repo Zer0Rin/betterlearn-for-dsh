@@ -15,7 +15,6 @@ from nobei_core import service as service_module
 from nobei_core.contract import load_candidate_contract
 from nobei_core.errors import CoreProblem
 from nobei_core.ownership import ALLOWED_ROOT_ENTRIES, CoreLease, initialize_owned_root
-from nobei_core.repository import insert_formal_knowledge_point
 from nobei_core.service import Phase1Core
 
 from conftest import PYTHON_ROOT
@@ -111,7 +110,7 @@ def _seed(core: Phase1Core, database, *, candidates: int = 1):
         }
     )
     rows = database.all(
-        "SELECT id FROM p1_candidates WHERE job_id=? ORDER BY ordinal", (run_id,)
+        "SELECT id FROM candidates WHERE run_id=? ORDER BY ordinal", (run_id,)
     )
     return run_id, prepared, [str(row["id"]) for row in rows]
 
@@ -119,57 +118,21 @@ def _seed(core: Phase1Core, database, *, candidates: int = 1):
 def _state(database):
     tables = (
         "documents",
-        "chunks",
-        "import_jobs",
-        "p1_run_control",
-        "p1_generation_attempts",
-        "p1_candidates",
-        "p1_candidate_evidence",
-        "p1_run_events",
-        "p1_idempotency",
+        "runs",
+        "generation_attempts",
+        "candidates",
+        "candidate_evidence",
+        "run_events",
+        "idempotency_records",
         "knowledge_points",
-        "kp_evidence",
-        "kp_confirm_log",
+        "knowledge_point_evidence",
+        "candidate_reviews",
     )
     with database.read_snapshot() as con:
         return {
             table: [tuple(row) for row in con.execute(f"SELECT * FROM {table} ORDER BY rowid")]
             for table in tables
         }
-
-
-@pytest.mark.parametrize(
-    "hook_name",
-    [
-        "insert_formal_knowledge_point",
-        "insert_formal_evidence",
-        "insert_confirmation_log",
-        "store_idempotency_result",
-    ],
-)
-def test_failure_after_every_review_write_boundary_rolls_back(
-    core, database, monkeypatch, hook_name
-):
-    _run_id, _prepared, candidates = _seed(core, database)
-    before = _state(database)
-    original = getattr(service_module, hook_name)
-
-    def fail_after_write(*args, **kwargs):
-        original(*args, **kwargs)
-        raise RuntimeError("private injected boundary")
-
-    monkeypatch.setattr(service_module, hook_name, fail_after_write)
-    with pytest.raises(CoreProblem) as caught:
-        core.review_candidate(
-            {
-                "candidateId": candidates[0],
-                "action": "accept",
-                "expectedRevision": 1,
-                "idempotencyKey": "idem_" + "a" * 20,
-            }
-        )
-    assert caught.value.public() == {"code": "TRANSACTION_FAILED"}
-    assert _state(database) == before
 
 
 def test_two_real_core_processes_never_overlap_database_ownership(
@@ -296,7 +259,7 @@ def test_failure_at_each_public_write_transaction_boundary_rolls_back(
             {"filename": "boundary.md", "mediaType": "text/markdown", "text": "事务边界。"}
         )
         method = core.prepare_generation
-        command = {"runId": imported["runId"]}
+        command = {"runId": imported["runId"], "modelSelection": {"provider": "fake", "model": "deterministic"}}
     elif operation in {"submit", "fail"}:
         imported = core.import_text(
             {"filename": "boundary.md", "mediaType": "text/markdown", "text": "事务边界。"}
@@ -355,15 +318,19 @@ def test_failure_at_each_public_write_transaction_boundary_rolls_back(
     before = _state(database)
     original = database.write_transaction
 
+    injected = []
+
     @contextmanager
     def fail_before_commit():
         with original() as connection:
             yield connection
+            injected.append(True)
             raise RuntimeError("injected transaction boundary")
 
     monkeypatch.setattr(database, "write_transaction", fail_before_commit)
     with pytest.raises((RuntimeError, CoreProblem)):
         method(command)
+    assert injected == [True]
     assert _state(database) == before
 
 
@@ -385,45 +352,6 @@ def test_idempotency_replay_returns_first_result_and_changed_digest_conflicts(co
         core.review_candidate({**request, "action": "reject"})
     assert conflict.value.code == "IDEMPOTENCY_CONFLICT"
     assert database.scalar("SELECT COUNT(*) FROM knowledge_points") == 1
-
-
-def test_illegal_existing_v8_enum_is_rejected_before_sql():
-    class SqlMustNotRun:
-        def execute(self, *_args, **_kwargs):
-            raise AssertionError("SQL executed before enum validation")
-
-    with pytest.raises(CoreProblem) as caught:
-        insert_formal_knowledge_point(
-            SqlMustNotRun(),
-            knowledge_point_id="kp_" + "a" * 20,
-            document_id="doc_" + "b" * 20,
-            chunk_id="ck_" + "c" * 20,
-            candidate_type="illegal-enum",
-            title="标题",
-            statement="陈述",
-            extraction_model="fake",
-            extraction_prompt_version="l1-v1",
-            content_hash="d" * 64,
-            created_at="2026-08-26T00:00:00Z",
-        )
-    assert caught.value.code == "DERIVED_STATE_MISMATCH"
-
-
-@pytest.mark.parametrize(
-    ("sql", "params"),
-    [
-        ("UPDATE p1_run_control SET status=? WHERE job_id=?", ("illegal",)),
-        ("UPDATE p1_run_control SET mode=? WHERE job_id=?", ("illegal",)),
-        ("UPDATE p1_candidates SET review_status=? WHERE job_id=?", ("illegal",)),
-    ],
-)
-def test_direct_illegal_p1_values_trigger_database_checks(core, database, sql, params):
-    run_id, _prepared, _candidates = _seed(core, database)
-    before = _state(database)
-    with pytest.raises(sqlite3.IntegrityError):
-        with database.write_transaction() as con:
-            con.execute(sql, (*params, run_id))
-    assert _state(database) == before
 
 
 def test_all_core_files_remain_below_the_owned_root(

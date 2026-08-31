@@ -96,6 +96,30 @@ async function flush() {
 }
 
 describe('phase1d workspace lifecycle', () => {
+  test('enters review immediately on an SSE hint and releases the subscription', async () => {
+    const storage = new MemoryStorage()
+    writeSessionState(storage, 'session-1', { version: 1, runId: 'job_saved', lastEventSeq: 0 })
+    let notify!: () => void
+    const close = vi.fn()
+    const api = fakeApi({
+      watchRun: (_id, listener) => { notify = listener; return close },
+      getRun: vi.fn().mockResolvedValueOnce(snapshot('generating'))
+        .mockResolvedValueOnce(snapshot('review_pending')),
+      listEvents: vi.fn(async () => eventPage(0)),
+      listCandidates: vi.fn(async () => ({ candidates: [candidate()] })),
+    })
+    const app = mount(api, storage)
+    await flush()
+    expect(app.latest.screen).toBe('processing')
+    await act(async () => notify())
+    await flush()
+    expect(app.latest.screen).toBe('review')
+    expect(app.latest.candidates).toHaveLength(1)
+    expect(api.getRun).toHaveBeenCalledTimes(2)
+    expect(close).toHaveBeenCalledOnce()
+    act(() => app.renderer.unmount())
+  })
+
   test('uses the latest subscribed model for import without reloading the directory during submit', async () => {
     const oldSelection = { provider: 'provider-old', model: 'model-old' }
     const freshSelection = { provider: 'provider-new', model: 'model-new', reasoningEffort: 'high' }
@@ -445,4 +469,83 @@ describe('phase1d workspace lifecycle', () => {
     expect(readSessionState(storage, 'session-1').pendingReview).toBeUndefined()
     act(() => app.renderer.unmount())
   })
+})
+
+test.each([false, true])('model directory identity changes cannot restore old run after reset/import (store=%s)', async withStore => {
+  const storage = new MemoryStorage()
+  writeSessionState(storage, 'restore-session', { version: 1, runId: 'job_A', lastEventSeq: 0 })
+  const api = fakeApi({
+    getRun: vi.fn(async id => snapshot(id === 'job_A' ? 'completed' : 'review_pending', { runId: id })),
+    listEvents: vi.fn(async () => eventPage()),
+    importText: vi.fn(async () => ({ runId: 'job_B', attemptId: 'att_B', revision: 2, modelSelection })),
+  })
+  const newDirectories = (): ModelDirectoryResolverPort => {
+    const state = { current: modelSelection, routable: true, status: 'ready' as const }
+    return { directoryFor: () => ({
+      load: async () => state,
+      ...(withStore ? { store: { getSnapshot: () => state, subscribe: () => () => undefined } } : {}),
+    }) }
+  }
+  let latest!: WorkspaceController
+  function Harness({ directories }: { directories: ModelDirectoryResolverPort }) {
+    latest = useNobeiWorkspace({ sessionId: 'restore-session', api, storage, scheduler,
+      modelDirectories: directories, ordinarySession: true })
+    return null
+  }
+  let renderer!: ReactTestRenderer
+  act(() => { renderer = create(<Harness directories={newDirectories()} />) })
+  try {
+    await flush()
+    expect(latest.run?.runId).toBe('job_A')
+    expect(latest.screen).toBe('result')
+    act(() => latest.reset())
+    await flush()
+    await act(async () => { await latest.importText({ filename: 'long.txt', mediaType: 'text/plain', text: 'new document' }) })
+    await flush()
+    expect(latest.run?.runId).toBe('job_B')
+    expect(readSessionState(storage, 'restore-session').runId).toBe('job_B')
+    const requests = vi.mocked(api.getRun).mock.calls.length
+    act(() => renderer.update(<Harness directories={newDirectories()} />))
+    await flush()
+    expect(latest.run?.runId).toBe('job_B')
+    expect(latest.screen).toBe('review')
+    expect(readSessionState(storage, 'restore-session').runId).toBe('job_B')
+    expect(api.getRun).toHaveBeenCalledTimes(requests)
+  } finally { act(() => renderer.unmount()) }
+})
+
+test('model directory refresh does not abort an in-flight retry command', async () => {
+  const storage = new MemoryStorage()
+  writeSessionState(storage, 'retry-session', { version: 1, runId: 'job_B', lastEventSeq: 0 })
+  const launch = deferred<Awaited<ReturnType<ClientApi['retryRun']>>>()
+  const api = fakeApi({
+    getRun: vi.fn(async () => snapshot('failed_retryable', { runId: 'job_B' })),
+    listEvents: vi.fn(async () => eventPage()),
+    retryRun: vi.fn(() => launch.promise),
+  })
+  let latest!: WorkspaceController
+  function Harness({ directories }: { directories: ModelDirectoryResolverPort }) {
+    latest = useNobeiWorkspace({ sessionId: 'retry-session', api, storage, scheduler,
+      modelDirectories: directories, ordinarySession: true })
+    return null
+  }
+  let renderer!: ReactTestRenderer
+  act(() => { renderer = create(<Harness directories={modelDirectories()} />) })
+  try {
+    await flush()
+    let retry!: Promise<void>
+    act(() => { retry = latest.retry() })
+    const signal = vi.mocked(api.retryRun).mock.calls[0][2]!
+    act(() => renderer.update(<Harness directories={modelDirectories()} />))
+    await flush()
+    expect(signal.aborted).toBe(false)
+    expect(api.getRun).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      launch.resolve({ runId: 'job_B', attemptId: 'att_2', revision: 5 })
+      await retry
+    })
+    expect(latest.busy).toBe(false)
+    expect(readSessionState(storage, 'retry-session').runId).toBe('job_B')
+    expect(api.retryRun).toHaveBeenCalledTimes(1)
+  } finally { act(() => renderer.unmount()) }
 })
