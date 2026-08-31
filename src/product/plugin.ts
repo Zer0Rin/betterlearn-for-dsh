@@ -1,6 +1,7 @@
 import { isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
+import Schema from '@deepseek-ai/schemastery'
 import { CoreSupervisor, type CoreSupervisorConfig } from './core-supervisor.js'
 import { StructuredGenerationAdapter } from './generation-adapter.js'
 import { GenerationCoordinator } from './generation-coordinator.js'
@@ -11,7 +12,25 @@ import { registerProductRoutes, type ProductOperations } from './routes.js'
 export const name = 'nobei-phase1c'
 export const inject = ['agents', 'llm', 'subprocess', 'tools', 'webServer', 'workflowEngine'] as const
 
-export interface ProductPluginConfig extends CoreSupervisorConfig {}
+export interface Config extends CoreSupervisorConfig {}
+export type ProductPluginConfig = Config
+
+const absolutePath = () => Schema.transform(Schema.string().required(), value => {
+  if (!isAbsolute(value)) throw new Error('Expected an absolute path')
+  return value
+}).required()
+
+// All three values belong to the local installation; no portable default exists.
+export const Config: Schema<Config> = Schema.transform(Schema.object({
+  pythonExecutable: absolutePath().description('Absolute path to the Python 3.12 executable.'),
+  dataRoot: absolutePath().description('Absolute path to the initialized BetterLearn data directory.'),
+  ownershipToken: Schema.string().min(32).pattern(/^[^\0]*$/).role('secret').required(),
+}).required(), value => {
+  if (Object.keys(value).sort().join(',') !== 'dataRoot,ownershipToken,pythonExecutable') {
+    throw new Error('Unexpected BetterLearn configuration field')
+  }
+  return value as Config
+}).required()
 
 export interface ProductPluginDependencies {
   packageRoot: string
@@ -43,18 +62,6 @@ const defaultDependencies: ProductPluginDependencies = {
   registerRoutes: registerProductRoutes,
 }
 
-function validConfig(value: unknown): value is ProductPluginConfig {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
-  const input = value as Record<string, unknown>
-  if (Object.keys(input).sort().join(',') !== 'dataRoot,ownershipToken,pythonExecutable') return false
-  return (
-    typeof input.pythonExecutable === 'string' && isAbsolute(input.pythonExecutable)
-    && typeof input.dataRoot === 'string' && isAbsolute(input.dataRoot)
-    && typeof input.ownershipToken === 'string' && input.ownershipToken.length >= 32
-    && !input.ownershipToken.includes('\0')
-  )
-}
-
 async function disposeInOrder(actions: Array<() => void | Promise<void>>): Promise<void> {
   let firstError: unknown
   for (const action of actions) {
@@ -72,7 +79,7 @@ export async function applyProductPlugin(
   config: ProductPluginConfig,
   dependencies: ProductPluginDependencies = defaultDependencies,
 ): Promise<() => Promise<void>> {
-  if (!validConfig(config)) throw new Error('NOBEI_PHASE1C_CONFIG_INVALID')
+  try { config = Config(config) } catch { throw new Error('NOBEI_PHASE1C_CONFIG_INVALID') }
   const contract = dependencies.loadContract(dependencies.packageRoot)
   let supervisor: CoreSupervisor | undefined
   let coordinator: GenerationCoordinator | undefined

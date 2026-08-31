@@ -6,26 +6,24 @@ import { ResultSummary } from './components/ResultSummary.js'
 import { ReviewWorkspace } from './components/ReviewWorkspace.js'
 import { RunProgress } from './components/RunProgress.js'
 import type { PollScheduler } from './poll-run.js'
-import { modelSelectionLabel, type ModelDirectoryResolverPort } from './model-directory-bridge.js'
+import { modelSelectionLabel, type ModelSelectionInput, type ModelSelectionProps } from './model-directory-bridge.js'
 import { ensureClientStyles } from './styles.js'
 import type { ClientApi } from './types.js'
 import { useNobeiWorkspace } from './use-nobei-workspace.js'
 import { workspaceCopy } from './workspace-copy.js'
 
-export interface NobeiWorkspaceProps {
+export interface NobeiWorkspaceProps extends ModelSelectionInput {
   sessionId: string
   api: ClientApi
   storage: Storage
-  modelDirectories: ModelDirectoryResolverPort
-  ordinarySession: boolean
   scheduler?: PollScheduler
 }
 
 export function NobeiWorkspace({
-  sessionId, api, storage, modelDirectories, ordinarySession, scheduler,
+  sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
 }: NobeiWorkspaceProps) {
   const workspace = useNobeiWorkspace({
-    sessionId, api, storage, modelDirectories, ordinarySession, scheduler,
+    sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
   })
   const sourceName = workspace.run?.document.filename ?? '新的学习材料'
   const activeModel = workspace.run?.modelSelection ?? workspace.modelSelection
@@ -69,16 +67,15 @@ export function NobeiWorkspace({
   )
 }
 
-export interface NobeiClientViewProps extends ConvViewProps {
-  modelDirectories: ModelDirectoryResolverPort
-  ordinarySession: boolean
-}
+export type NobeiClientViewProps = ConvViewProps & ModelSelectionProps
 
 export function NobeiClientView(props: NobeiClientViewProps) {
   const api = useMemo(() => createClientApi(), [])
+  const modelDirectoryState = props.useModelDirectory(state => state)
   useEffect(() => ensureClientStyles(document), [])
   return <NobeiWorkspace sessionId={String(props.sessionId)} api={api} storage={window.sessionStorage}
-    modelDirectories={props.modelDirectories} ordinarySession={props.ordinarySession} />
+    modelDirectoryState={modelDirectoryState} loadModelSelection={props.loadModelSelection}
+    readModelDirectory={props.readModelDirectory} ordinarySession={props.ordinarySession} />
 }
 
 export function NobeiBlankSessionDock(props: NobeiClientViewProps & { session: { blank: boolean } }) {

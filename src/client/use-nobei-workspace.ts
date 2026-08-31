@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { GenerationProgress } from '../generation-progress.js'
 import { ProductApiError } from './client-api.js'
 import {
   ModelDirectoryBridgeError,
   detachedModelSelection,
-  selectionForNewRun,
-  type ModelDirectoryResolverPort,
+  type ModelSelectionInput,
 } from './model-directory-bridge.js'
 import { pollRun, type PollScheduler } from './poll-run.js'
 import { workspaceCopy } from './workspace-copy.js'
@@ -96,15 +95,13 @@ function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-export function useNobeiWorkspace(options: {
+export function useNobeiWorkspace(options: ModelSelectionInput & {
   sessionId: string
   api: ClientApi
   storage: Storage
-  modelDirectories: ModelDirectoryResolverPort
-  ordinarySession: boolean
   scheduler?: PollScheduler
 }): WorkspaceController {
-  const { sessionId, api, storage, modelDirectories, ordinarySession } = options
+  const { sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession } = options
   const scheduler = useMemo(() => options.scheduler ?? browserScheduler(), [options.scheduler])
   const initial = useMemo(() => readSessionState(storage, sessionId), [storage, sessionId])
   const [screen, setScreen] = useState<WorkspaceScreen>(initial.runId ? 'processing' : 'import')
@@ -118,28 +115,17 @@ export function useNobeiWorkspace(options: {
   const [submittingCandidateId, setSubmittingCandidateId] = useState<string>()
   const [serviceUnavailable, setServiceUnavailable] = useState(false)
   const [message, setMessage] = useState<string>()
-  const [modelSelection, setModelSelection] = useState<ModelSelectionSnapshot>()
-  const [modelDirectoryStatus, setModelDirectoryStatus] = useState<ModelDirectoryStatus>(
+  const [loadedModelSelection, setModelSelection] = useState<ModelSelectionSnapshot>()
+  const [loadedModelStatus, setModelDirectoryStatus] = useState<ModelDirectoryStatus>(
     ordinarySession ? 'loading' : 'unavailable',
   )
-  const directory = useMemo(() => {
-    if (!ordinarySession) return undefined
-    try {
-      return modelDirectories.directoryFor(sessionId)
-    } catch {
-      return undefined
-    }
-  }, [modelDirectories, ordinarySession, sessionId])
-  const emptyDirectoryState = useMemo(() => ({
-    current: null,
-    routable: null,
-    status: 'idle' as const,
-  }), [])
-  const directoryState = useSyncExternalStore(
-    useCallback((listener) => directory?.store?.subscribe(listener) ?? (() => undefined), [directory]),
-    useCallback(() => directory?.store?.getSnapshot() ?? emptyDirectoryState, [directory, emptyDirectoryState]),
-    useCallback(() => emptyDirectoryState, [emptyDirectoryState]),
-  )
+  const modelSelection = modelDirectoryState === undefined ? loadedModelSelection
+    : detachedModelSelection(modelDirectoryState.current)
+  const modelDirectoryStatus: ModelDirectoryStatus = !ordinarySession ? 'unavailable'
+    : modelDirectoryState === undefined ? loadedModelStatus
+      : modelDirectoryState.status === 'loading' || modelDirectoryState.routable === null ? 'loading'
+        : modelDirectoryState.routable === false ? 'unroutable'
+          : modelSelection ? 'ready' : 'unavailable'
   const pollController = useRef<AbortController>()
   const commandController = useRef<AbortController>()
   const modelLoadPromise = useRef<Promise<ModelSelectionSnapshot>>()
@@ -174,7 +160,7 @@ export function useNobeiWorkspace(options: {
   const refreshModelSelection = useCallback(async (): Promise<ModelSelectionSnapshot> => {
     if (modelLoadPromise.current !== undefined) return modelLoadPromise.current
     setModelDirectoryStatus('loading')
-    const loading = selectionForNewRun(modelDirectories, sessionId, ordinarySession)
+    const loading = loadModelSelection()
       .then((selected) => {
         setModelSelection(selected)
         setModelDirectoryStatus('ready')
@@ -189,11 +175,11 @@ export function useNobeiWorkspace(options: {
       })
     modelLoadPromise.current = loading
     return loading
-  }, [modelDirectories, ordinarySession, sessionId, setFailure])
+  }, [loadModelSelection, setFailure])
 
   const currentModelSelection = useCallback((): ModelSelectionSnapshot => {
     if (!ordinarySession) throw new ModelDirectoryBridgeError('MODEL_SELECTION_UNAVAILABLE')
-    const snapshot = directory?.store?.getSnapshot()
+    const snapshot = readModelDirectory()
     if (snapshot !== undefined) {
       if (snapshot.routable === false) throw new ModelDirectoryBridgeError('MODEL_NOT_ROUTABLE')
       if (snapshot.routable !== true) throw new ModelDirectoryBridgeError('MODEL_SELECTION_UNAVAILABLE')
@@ -207,23 +193,7 @@ export function useNobeiWorkspace(options: {
       throw new ModelDirectoryBridgeError('MODEL_SELECTION_UNAVAILABLE')
     }
     return current
-  }, [directory?.store, modelDirectoryStatus, modelSelection, ordinarySession])
-
-  useEffect(() => {
-    if (!ordinarySession || !directory?.store) return
-    const current = detachedModelSelection(directoryState.current)
-    if (current) setModelSelection(current)
-    else if (directoryState.current === null) setModelSelection(undefined)
-    if (directoryState.status === 'loading' || directoryState.routable === null) {
-      setModelDirectoryStatus('loading')
-    } else if (directoryState.routable === false) {
-      setModelDirectoryStatus('unroutable')
-    } else if (current) {
-      setModelDirectoryStatus('ready')
-    } else {
-      setModelDirectoryStatus('unavailable')
-    }
-  }, [directory?.store, directoryState, ordinarySession])
+  }, [readModelDirectory, modelDirectoryStatus, modelSelection, ordinarySession])
 
   const loadTerminal = useCallback(async (snapshot: RunSnapshot, signal: AbortSignal) => {
     if (snapshot.status === 'review_pending') {
@@ -290,18 +260,15 @@ export function useNobeiWorkspace(options: {
 
   useEffect(() => {
     if (!readSessionState(storage, sessionId).runId && ordinarySession) {
-      const snapshot = directory?.store?.getSnapshot()
+      const snapshot = readModelDirectory()
       const current = detachedModelSelection(snapshot?.current)
-      if (snapshot?.routable === true && current !== undefined) {
-        setModelSelection(current)
-        setModelDirectoryStatus('ready')
-      } else {
+      if (snapshot?.routable !== true || current === undefined) {
         void refreshModelSelection().catch(() => undefined)
       }
     } else if (!ordinarySession) {
       setFailure(new ModelDirectoryBridgeError('MODEL_SELECTION_UNAVAILABLE'))
     }
-  }, [directory?.store, ordinarySession, refreshModelSelection, sessionId, setFailure, storage])
+  }, [readModelDirectory, ordinarySession, refreshModelSelection, sessionId, setFailure, storage])
 
   const adoptImport = useCallback(async (pending: Promise<ImportLaunch>): Promise<boolean> => {
     commandBusy.current = true

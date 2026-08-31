@@ -1,3 +1,4 @@
+import { bindModelSelection } from './helpers/model-selection.js'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -68,10 +69,15 @@ describe('Nobei conversation view registration', () => {
       order: 50,
       label: 'Nobei',
     })
+    expect(entries[0]!.inject).toBeTypeOf('function')
+    const injected = entries[0]!.inject!('session-1' as never) as any
+    expect(injected.hooks.modelDirectory.getSnapshot).toBeTypeOf('function')
+    expect(injected).not.toHaveProperty('modelDirectories')
+    expect(injected.loadModelSelection).toBeTypeOf('function')
 
     let renderer: ReturnType<typeof create>
     act(() => {
-      renderer = create(createElement(entries[0]!.component, { sessionId: 'session-1' }))
+      renderer = create(createElement(entries[0]!.component, { sessionId: 'session-1', ...bindModelSelection(injected) }))
     })
     expect(renderer!.root.findByProps({ 'data-testid': 'nobei-client-view' })).toBeDefined()
     act(() => renderer!.unmount())
@@ -84,6 +90,7 @@ describe('Nobei conversation view registration', () => {
       dock = create(createElement(docks[0]!.component, {
         sessionId: 'session-1',
         session: { blank: true },
+        ...bindModelSelection(docks[0]!.inject!('session-1' as never) as any),
       }))
     })
     expect(dock!.root.findByProps({ 'data-testid': 'nobei-client-view' })).toBeDefined()
@@ -94,6 +101,7 @@ describe('Nobei conversation view registration', () => {
       nonBlank = create(createElement(docks[0]!.component, {
         sessionId: 'session-1',
         session: { blank: false },
+        ...bindModelSelection(docks[0]!.inject!('session-1' as never) as any),
       }))
     })
     expect(nonBlank!.toJSON()).toBeNull()

@@ -17,7 +17,8 @@ describe('phase1 external bundle package', () => {
 
     const pkg = JSON.parse(await readFile('package.json', 'utf8'))
     expect(pkg.name).toBe('@nobei/dsh-phase1')
-    expect(pkg.version).toBe('0.0.3')
+    expect(pkg.version).toBe('0.0.4')
+    expect(pkg.dependencies['@deepseek-ai/schemastery']).toBe('3.18.1')
     expect(pkg.dsh.bundle.patch).toBe('./cordis.patch.yml')
     expect(pkg.dsh.client).toEqual({
       inject: [

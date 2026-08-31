@@ -17,6 +17,8 @@ BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-
 - 只在创建新任务时提交模型选择，不自行保存 DSH 设置；
 - 不持有业务数据库。
 
+模型目录服务只在槽位的`inject`组装处使用：`hooks.modelDirectory`由DSH转换为`useModelDirectory`，组件接收快照及加载/读取回调，不直接订阅服务。菜单切换即时更新新任务的模型显示；点击提取时通过回调读取最新快照，避免尚未重绘时提交旧选择。任务恢复与轮询仍只跟随会话/任务，目录更新不重新生成已有任务。
+
 ### Host
 
 - 注册 `/nobei/v1/*` 产品路由；
@@ -24,6 +26,8 @@ BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-
 - 调用 DSH workflow / LLM 接缝；
 - 将 Core 已冻结的 provider、model、reasoning effort 安装到生成 Agent；
 - 不成为第二业务事实源。
+
+Host从包入口导出Schemastery `Config`，Cordis加载和配置更新、直接调用`applyProductPlugin`使用同一份规则，替代原手写校验；有效值与原有拒绝范围不变。`pythonExecutable`、`dataRoot`、`ownershipToken`均由维护CLI提供且必填，没有可跨安装复用的默认路径或token。Schema不等于设置界面，本次没有新增设置卡片或配置项。
 
 ### Python Core
 

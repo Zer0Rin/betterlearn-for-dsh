@@ -134,3 +134,18 @@ Python测试从463变为334，净减少129项。P2移除了v8双重投影、每�
 证据：`evidence/generation-progress/final-result.json`、`observe.mjs`、`focused-tests.txt`、`build.txt`及浏览器截图。本次未重跑TS/Python全量或P3/P4完整验收；不增加provider账本或生产数据库校验。
 
 本机已通过维护CLI备份、升级至0.0.3并重启，实际加载的Host与Client构建产物一致。升级时用户已完成全部53条审核、保存53个知识点；升级前后11张表内容摘要相同，维护备份也逐表相同，模型请求数仍为12次，没有新增付费调用。已完成任务保持completed，瞬时进度接口返回null。核对记录为同目录的`before-upgrade.json`、`after-upgrade.json`、`backup-snapshot.json`与`upgrade-result.json`。
+
+## 配置与客户端订阅整理（0.0.4）
+
+本次把Host已有配置校验收敛到导出的Schemastery `Config`，并将客户端模型目录订阅交给槽位`inject.hooks`。三个安装配置保持必填，不编造默认路径或token，不增加设置卡片。prompt、调用预算、Core及数据库均未改动。
+
+验收标准与2026-08-31实测结果：
+
+- 构建、打包通过；定向10文件72/72项通过。新增Config加载/更新与槽位注入断言先失败后通过；配置有效值保持原样，无效更新在旧实例被释放前拒绝，有效更新正常重建。已有模型不可用、草稿保留、任务恢复、重试与轮询测试保留，订阅卸载后监听数归零。
+- 真实DSH rc.8加载0.0.4：空会话导入入口中的模型和推理等级切换即时反映到BetterLearn，草稿不丢失；独立`conversation.view`标签页也能响应模型切换。
+- 浏览器完成一次fake提取，原文证据高亮，进入审核并接受为1个知识点；审核时切换模型及刷新仍恢复原任务和冻结模型，进入普通会话后独立标签页保留同一结果。
+- 新增调用恰为2次fake调用：1次提取、1次用于创建普通会话的fake聊天。切换、刷新和审核没有新增生成，真实模型调用0次，浏览器error日志为空。临时fake包仅补充已有四条路由的模型目录，真实provider保持禁用；未修改仓库fake-provider源码或生产模型设置。
+
+证据位于`evidence/config-injection/`：`focused-tests.txt`、`pack.txt`、`final-result.json`、页面快照和截图。本次GO只覆盖这两项整理及其确定性闭环；没有重跑TS/Python全量、P3/P4完整验收或真实模型质量验证。
+
+本机已经维护CLI先备份再升级至0.0.4并重启。实际Host/Client与构建产物一致，升级前后11张产品表及备份逐表一致，53个知识点与53条审核记录保留，模型请求数保持12次。安装配置除包路径外不变，已完成任务仍为completed、瞬时进度为null。见同目录`before-upgrade.json`、`after-upgrade.json`、`backup-snapshot.json`与`upgrade-result.json`。

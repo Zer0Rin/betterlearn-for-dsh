@@ -101,4 +101,4 @@ L1每次提取最多1次模型调用；L2/L3包含规划和分批提取，界面
 - `conversation.view`注册的是独立标签页，不覆盖其他视图；但随包的patch会修改专用profile中的工具、重试和workflow设置。不要把它直接叠加到日常编码profile；具体影响见 [专用profile限制](docs/install.md#专用-profile-的能力范围)。
 - PDF只支持文字层，无OCR；证据定位针对保存的规范化正文，不保证原PDF版面坐标。正文上限512KiB、PDF文件上限5MiB；不保存原PDF。
 - 每次提取调用最多20条候选，长文按多批汇总；精确quote匹配不等于知识点语义正确或覆盖完整，仍需人工审核。fake验收和有限真实试用不代表任意模型、任意材料的质量保证，已验证范围见 [验证说明](docs/validation.md)。
-- 当前配置由维护CLI提供并由Host手写校验，尚未导出Schemastery `Config`或提供插件设置卡片；客户端模型目录订阅尚未整理到`inject.hooks`。这些是后续小步整理项，不影响当前试用的既有支持范围。
+- 配置由维护CLI提供，Host导出Schemastery `Config`供Cordis加载与更新时校验。Python路径、数据目录与ownership token均属于本机安装，保持必填，不生成通用默认值。客户端通过`inject.hooks`订阅模型目录；尚未提供插件设置卡片。

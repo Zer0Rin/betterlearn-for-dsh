@@ -1,4 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
+import { Context, resolveConfig } from '@deepseek-ai/cordis'
+import * as entry from '../src/index.js'
 import {
   applyProductPlugin,
   inject,
@@ -50,6 +52,28 @@ function dependencies(options: { startError?: Error } = {}) {
 }
 
 describe('phase1c product plugin', () => {
+  test('exports a loader schema with required values, preserving valid input and rejecting invalid updates', async () => {
+    expect(entry).toHaveProperty('Config')
+    expect(resolveConfig(entry, config)).toEqual(config)
+    for (const invalid of [undefined, null, {}, [], { ...config, pythonExecutable: 'python' },
+      { ...config, dataRoot: 'relative' }, { ...config, ownershipToken: 'short' },
+      { ...config, ownershipToken: 't'.repeat(32) + '\0' }, { ...config, extra: true }]) {
+      expect(() => resolveConfig(entry, invalid)).toThrow()
+    }
+    const calls: string[] = []
+    const ctx = new Context()
+    const fiber = ctx.plugin({ Config: entry.Config, apply(_ctx, value: typeof config) {
+      calls.push(value.dataRoot)
+      return () => { calls.push('disposed') }
+    } }, config)
+    await fiber
+    expect(() => fiber.update({ ...config, dataRoot: 'relative' })).toThrow()
+    expect(calls).toEqual([config.dataRoot])
+    await fiber.update({ ...config, dataRoot: '/owned/another-root' })
+    expect(calls).toEqual([config.dataRoot, 'disposed', '/owned/another-root'])
+    await fiber.dispose()
+  })
+
   test('has the exact public identity and service dependencies', () => {
     expect(name).toBe('nobei-phase1c')
     expect(inject).toEqual(['agents', 'llm', 'subprocess', 'tools', 'webServer', 'workflowEngine'])

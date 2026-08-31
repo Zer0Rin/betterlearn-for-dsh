@@ -1,3 +1,4 @@
+import { useModelSelectionInput } from './helpers/model-selection.js'
 import { useEffect } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, test, vi } from 'vitest'
@@ -81,7 +82,7 @@ function mount(
   const screens: WorkspaceController['screen'][] = []
   function Harness() {
     latest = useNobeiWorkspace({
-      sessionId, api, storage, scheduler, modelDirectories: directories, ordinarySession,
+      sessionId, api, storage, scheduler, ...useModelSelectionInput(directories, sessionId, ordinarySession),
     })
     useEffect(() => { screens.push(latest.screen) }, [latest.screen])
     return null
@@ -489,7 +490,7 @@ test.each([false, true])('model directory identity changes cannot restore old ru
   let latest!: WorkspaceController
   function Harness({ directories }: { directories: ModelDirectoryResolverPort }) {
     latest = useNobeiWorkspace({ sessionId: 'restore-session', api, storage, scheduler,
-      modelDirectories: directories, ordinarySession: true })
+      ...useModelSelectionInput(directories, 'restore-session', true) })
     return null
   }
   let renderer!: ReactTestRenderer
@@ -526,7 +527,7 @@ test('model directory refresh does not abort an in-flight retry command', async 
   let latest!: WorkspaceController
   function Harness({ directories }: { directories: ModelDirectoryResolverPort }) {
     latest = useNobeiWorkspace({ sessionId: 'retry-session', api, storage, scheduler,
-      modelDirectories: directories, ordinarySession: true })
+      ...useModelSelectionInput(directories, 'retry-session', true) })
     return null
   }
   let renderer!: ReactTestRenderer

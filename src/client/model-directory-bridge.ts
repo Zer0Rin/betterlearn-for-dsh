@@ -1,4 +1,11 @@
 import type { ModelSelectionSnapshot } from './types.js'
+import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
+
+export interface ModelDirectorySnapshot {
+  current: ModelSelectionSnapshot | null
+  routable: boolean | null
+  status: 'idle' | 'loading' | 'ready' | 'selecting' | 'error'
+}
 
 export interface ModelDirectoryPort {
   load(): Promise<{
@@ -6,17 +13,36 @@ export interface ModelDirectoryPort {
     routable: boolean
   }>
   store?: {
-    getSnapshot(): {
-      current: ModelSelectionSnapshot | null
-      routable: boolean | null
-      status: 'idle' | 'loading' | 'ready' | 'selecting' | 'error'
-    }
+    getSnapshot(): ModelDirectorySnapshot
     subscribe(listener: () => void): () => void
   }
 }
 
 export interface ModelDirectoryResolverPort {
   directoryFor(sessionId: string): ModelDirectoryPort
+}
+
+/** Constructed at slot registration injection; services and observables stay outside components. */
+export function modelSelectionInjection(directories: ModelDirectoryResolverPort, sessionId: string, ordinarySession: boolean) {
+  let directory: ModelDirectoryPort | undefined
+  if (ordinarySession) {
+    try { directory = directories.directoryFor(sessionId) } catch { /* The load callback reports unavailability. */ }
+  }
+  const source = directory?.store ?? {
+    getSnapshot: (): ModelDirectorySnapshot | undefined => undefined,
+    subscribe: (_listener: () => void) => () => undefined,
+  }
+  return {
+    ordinarySession,
+    hooks: { modelDirectory: source },
+    loadModelSelection: () => selectionForNewRun(directories, sessionId, ordinarySession),
+    readModelDirectory: (): ModelDirectorySnapshot | undefined => source.getSnapshot(),
+  }
+}
+
+export type ModelSelectionProps = InjectFace<ReturnType<typeof modelSelectionInjection>>
+export type ModelSelectionInput = Omit<ModelSelectionProps, 'useModelDirectory'> & {
+  modelDirectoryState: ModelDirectorySnapshot | undefined
 }
 
 export type ModelDirectoryErrorCode = 'MODEL_SELECTION_UNAVAILABLE' | 'MODEL_NOT_ROUTABLE'

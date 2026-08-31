@@ -2,7 +2,7 @@ import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/clie
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { ProductApiError } from '../src/client/client-api.js'
-import { NobeiClientView, NobeiWorkspace } from '../src/client/NobeiClientView.js'
+import { ViewWithDirectory as NobeiClientView, WorkspaceWithDirectory as NobeiWorkspace } from './helpers/model-selection.js'
 import { sessionKey, writeSessionState } from '../src/client/session-state.js'
 import type { CandidateSnapshot, ClientApi, RunSnapshot } from '../src/client/types.js'
 
@@ -77,6 +77,7 @@ describe('phase1d composed workspace', () => {
       await Promise.resolve(); await Promise.resolve()
     })
     expect(JSON.stringify(renderer.toJSON())).toContain('provider-a / model-a')
+    expect(listeners.size).toBe(1)
     await act(async () => {
       state = {
         current: { provider: 'provider-b', model: 'model-b', reasoningEffort: 'low' },
@@ -87,6 +88,7 @@ describe('phase1d composed workspace', () => {
     })
     expect(JSON.stringify(renderer.toJSON())).toContain('provider-b / model-b · low')
     act(() => renderer.unmount())
+    expect(listeners.size).toBe(0)
   })
 
   test('blocks addressed subagent sessions before resolving a model directory', async () => {

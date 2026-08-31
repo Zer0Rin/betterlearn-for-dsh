@@ -37,6 +37,10 @@ pnpmfileChecksum: sha256-z7+vIk7NiORiEvcRn+my4nmOq7nHozgLvsW0yF1rdeA=
 importers:
 
   .:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: 3.18.1
+        version: 3.18.1
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.1
