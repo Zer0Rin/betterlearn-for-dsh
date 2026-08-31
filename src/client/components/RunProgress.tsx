@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { ClientApi, RunSnapshot } from '../types.js'
 import { useDocumentPreview } from '../use-document-preview.js'
 import { modelSelectionLabel } from '../model-directory-bridge.js'
-import { workspaceCopy } from '../workspace-copy.js'
+import { generationFailureCopy, workspaceCopy } from '../workspace-copy.js'
 
 export interface RunProgressProps {
   run?: RunSnapshot
@@ -27,6 +27,8 @@ export function RunProgress({
   run, busy, serviceUnavailable, message, onRetry, onReload, onReset, previewDocument,
 }: RunProgressProps) {
   const active = activeStep(run)
+  const failed = run?.status === 'failed_retryable' || run?.status === 'failed_terminal'
+  const failureDetail = generationFailureCopy[run?.error?.code ?? ''] ?? '生成没有完成，原文仍已保存。'
   const longDocument = (run?.document.characterCount ?? 0) > 6000
   const previewInput = useMemo(() => run && longDocument ? {
     filename: run.document.filename, mediaType: run.document.mediaType, text: run.document.text,
@@ -45,7 +47,7 @@ export function RunProgress({
         {steps.map((label, index) => (
           <li key={label} data-state={index < active ? 'done' : index === active ? 'current' : 'pending'}>
             <span aria-hidden="true">{index < active ? '✓' : index + 1}</span>
-            {label}
+            {failed && index === active ? '提取已停止' : label}
           </li>
         ))}
       </ol>
@@ -60,6 +62,7 @@ export function RunProgress({
       {!serviceUnavailable && run?.status === 'failed_retryable' && (
         <div className="nobei-client__notice" role="status">
           <strong>这次生成没有完成</strong>
+          <p>{failureDetail}</p>
           <p>{maxCalls === undefined ? '正在读取提取计划；确认调用上限后才能重试。'
             : `此任务仍使用创建时的模型。点击“重新提取”会重新执行整个计划，最多再发起 ${maxCalls} 次模型调用。`}</p>
           {plan.error && <><p role="alert">{plan.error}</p>
@@ -70,6 +73,7 @@ export function RunProgress({
       {!serviceUnavailable && run?.status === 'failed_terminal' && (
         <div className="nobei-client__notice" role="status">
           <strong>本任务无法继续重试</strong>
+          <p>{failureDetail}</p>
           <p>可返回导入页，检查材料或模型设置后新建任务。新建任务会再次调用模型。</p>
           <button type="button" disabled={busy} onClick={onReset}>返回导入</button>
         </div>

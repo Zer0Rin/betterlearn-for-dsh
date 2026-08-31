@@ -10,7 +10,7 @@ describe('DshModelSelectionResolver', () => {
       provider: 'provider-fixture',
       model: 'model-fixture',
       reasoningEffort: 'high',
-      maxTokens: 8_192,
+      maxTokens: 32_768,
     }))
     const resolver = new DshModelSelectionResolver({ llm: { resolveCallConfig } } as never)
     const input = {
@@ -25,7 +25,7 @@ describe('DshModelSelectionResolver', () => {
       provider: 'provider-fixture',
       model: 'model-fixture',
       reasoningEffort: 'medium',
-      maxTokens: 8_192,
+      maxTokens: 32_768,
     }, undefined)
     expect(resolved).toEqual({
       provider: 'provider-fixture', model: 'model-fixture', reasoningEffort: 'high',

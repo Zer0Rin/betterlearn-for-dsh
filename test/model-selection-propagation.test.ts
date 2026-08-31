@@ -69,7 +69,7 @@ describe('ModelSelectionPropagation', () => {
     }, install)
 
     expect(propagation.agentOptions).toEqual({
-      provider: 'provider-a', model: 'model-a', maxTokens: 8_192,
+      provider: 'provider-a', model: 'model-a', maxTokens: 32_768,
     })
     expect(propagation.agentOptions).not.toHaveProperty('reasoningEffort')
     propagation.setupParent(parent.ctx as never)

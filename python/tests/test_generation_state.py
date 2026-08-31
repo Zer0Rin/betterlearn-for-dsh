@@ -92,6 +92,18 @@ def test_atomic_prepare_persists_and_returns_closed_model_selection(
     assert core.get_run({"runId": prepared["runId"]})["modelSelection"] == MODEL
 
 
+def test_output_limit_is_saved_and_requires_explicit_retry(core: Phase1Core, database):
+    prepared = core.import_and_prepare_generation(_atomic_import_params())
+    failed = _fail(core, prepared["runId"], prepared["attemptId"], prepared["revision"], "GENERATION_OUTPUT_LIMIT")
+    assert failed["run"]["error"] == {"code": "GENERATION_OUTPUT_LIMIT", "retryable": True}
+    assert core.get_run({"runId": prepared["runId"]})["error"] == failed["run"]["error"]
+    assert database.scalar("SELECT count(*) FROM generation_attempts") == 1
+    retry = core.retry_and_prepare_generation({"runId": prepared["runId"], "expectedRevision": failed["run"]["revision"]})
+    assert retry["modelSelection"] == MODEL
+    terminal = _fail(core, retry["runId"], retry["attemptId"], retry["revision"], "GENERATION_OUTPUT_LIMIT")
+    assert terminal["run"]["error"] == {"code": "GENERATION_OUTPUT_LIMIT", "retryable": False}
+
+
 def test_model_selection_changes_request_digest_and_optional_effort_may_be_absent(
     core: Phase1Core,
 ):

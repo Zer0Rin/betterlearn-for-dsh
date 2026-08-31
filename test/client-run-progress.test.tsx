@@ -22,6 +22,29 @@ function text(status: RunStatus) {
 }
 
 describe('phase1d run progress', () => {
+  test.each(['failed_retryable', 'failed_terminal'] as const)('explains the output limit in %s without starting another call', (status) => {
+    const snapshot = run(status)
+    snapshot.error = { code: 'GENERATION_OUTPUT_LIMIT', retryable: status === 'failed_retryable' }
+    const onRetry = vi.fn()
+    const renderer = create(<RunProgress run={snapshot} busy={false} serviceUnavailable={false}
+      onRetry={onRetry} onReload={vi.fn()} onReset={vi.fn()} />)
+    const output = JSON.stringify(renderer.toJSON())
+    expect(output).toContain('达到单次输出上限')
+    expect(output).toContain('推理也占用此上限')
+    expect(output).toContain('提取已停止')
+    expect(output).not.toContain('正在生成候选')
+    expect(onRetry).not.toHaveBeenCalled()
+    renderer.unmount()
+  })
+
+  test('explains historical no-output failures without claiming every one was a token limit', () => {
+    const snapshot = run('failed_retryable')
+    snapshot.error = { code: 'GENERATION_NO_OUTPUT', retryable: true }
+    const renderer = create(<RunProgress run={snapshot} busy={false} serviceUnavailable={false}
+      onRetry={vi.fn()} onReload={vi.fn()} onReset={vi.fn()} />)
+    expect(JSON.stringify(renderer.toJSON())).toContain('未收到可用的结构化结果')
+    renderer.unmount()
+  })
   test('reloads the long-document call budget before enabling an explicit retry', async () => {
     vi.useFakeTimers()
     const snapshot = run('failed_retryable')

@@ -261,7 +261,8 @@ export class StructuredGenerationAdapter {
           warnGeneration(this.ctx, `workflow rejected (cancelled=${cancelled}, aborted=${signal.aborted}, stopReason=${outcome.stopReason}, agentsStarted=${outcome.agentsStarted})`)
           classified = { ok: false, code: 'GENERATION_PROVIDER_ERROR' }
         } else if (outcome.value === null || outcome.value === undefined) {
-          classified = { ok: false, code: 'GENERATION_NO_OUTPUT' }
+          classified = { ok: false, code: propagation.childStopReason === 'max-tokens'
+            ? 'GENERATION_OUTPUT_LIMIT' : 'GENERATION_NO_OUTPUT' }
         } else if (!planning && this.contract.validate(outcome.value).length > 0) {
           classified = { ok: false, code: 'GENERATION_SCHEMA_INVALID' }
         } else {

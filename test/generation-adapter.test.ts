@@ -51,6 +51,7 @@ function fakeContext(outcome: unknown, options: {
   workflowDisposeError?: Error
   parentDisposeError?: Error
   emitOwnedChild?: boolean
+  childStopReason?: string
 } = {}) {
   const facts = {
     create: [] as any[],
@@ -111,7 +112,9 @@ function fakeContext(outcome: unknown, options: {
         start(request: any) {
           if (options.workflowStartError) throw options.workflowStartError
           facts.starts.push(request)
-          const child = { id: 'child_owned', ctx: scopedContext('child') }
+          const child = { id: 'child_owned', ctx: scopedContext('child'), session: { events: [
+            { type: 'turn/end', data: { reason: { kind: options.childStopReason ?? 'completed' } } },
+          ] } }
           if (options.emitOwnedChild !== false) owners.set(child.id, request.parent.id)
           for (const listener of [...creationListeners]) listener({ agent: child })
           return {
@@ -185,7 +188,7 @@ describe('StructuredGenerationAdapter', () => {
       agentOptions: {
         provider: 'provider-fixture',
         model: 'model-fixture',
-        maxTokens: 8_192,
+        maxTokens: 32_768,
       },
     }))
     expect(fake.facts.create[0].agentOptions).not.toHaveProperty('reasoningEffort')
@@ -246,6 +249,17 @@ describe('StructuredGenerationAdapter', () => {
     })
     const handle = await adapter.start(prepared, new AbortController().signal)
     await expect(handle.result).resolves.toEqual({ ok: false, code })
+    expect(fake.facts.workflowDispose).toBe(1)
+    expect(fake.facts.parentDispose).toBe(1)
+  })
+
+  test('distinguishes a reasoning-only token limit from a completed workflow with no output', async () => {
+    // Real rc.8 behavior: the child ends with max-tokens, but workflow settles completed/null.
+    const fake = fakeContext(complete(null), { childStopReason: 'max-tokens' })
+    const adapter = new StructuredGenerationAdapter(fake.ctx as never, contract(), { packageRoot: '/owned/package' })
+    const handle = await adapter.start(prepared, new AbortController().signal)
+    expect(await handle.result).toEqual({ ok: false, code: 'GENERATION_OUTPUT_LIMIT' })
+    expect(fake.facts.starts).toHaveLength(1)
     expect(fake.facts.workflowDispose).toBe(1)
     expect(fake.facts.parentDispose).toBe(1)
   })

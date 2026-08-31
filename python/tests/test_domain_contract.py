@@ -121,6 +121,7 @@ def test_generation_retryability_is_fixed_to_one_explicit_retry():
         "GENERATION_TIMEOUT": True,
         "GENERATION_SCHEMA_INVALID": True,
         "GENERATION_NO_OUTPUT": True,
+        "GENERATION_OUTPUT_LIMIT": True,
         "GENERATION_PROVIDER_ERROR": True,
     }
     assert all(configured and retry_count == 0 for configured in GENERATION_RETRYABILITY.values() for retry_count in (0,))
@@ -146,6 +147,7 @@ def test_public_error_codes_are_closed():
             "GENERATION_TIMEOUT",
             "GENERATION_SCHEMA_INVALID",
             "GENERATION_NO_OUTPUT",
+            "GENERATION_OUTPUT_LIMIT",
             "GENERATION_PROVIDER_ERROR",
             "RUN_STATE_CONFLICT",
             "DERIVED_STATE_MISMATCH",

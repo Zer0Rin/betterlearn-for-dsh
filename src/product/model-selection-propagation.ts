@@ -48,6 +48,7 @@ export class ModelSelectionPropagation {
   readonly #childDisposers: Disposer[] = []
   #listenerDisposer: Disposer | undefined
   #ownedChildren = 0
+  #ownedChild: Agent | undefined
   #installationFailed = false
   #disposed = false
 
@@ -73,6 +74,7 @@ export class ModelSelectionPropagation {
     this.#listenerDisposer = this.ctx.on('agent/created', ({ agent: child }) => {
       if (!this.ctx.agents.isOwnedBy(child.id, parent)) return
       this.#ownedChildren += 1
+      this.#ownedChild = child
       try {
         this.#installOn(child.ctx, this.#childDisposers, false)
       } catch {
@@ -88,9 +90,15 @@ export class ModelSelectionPropagation {
     }
   }
 
+  get childStopReason(): string | undefined {
+    const end = this.#ownedChild?.session.events.findLast(event => event.type === 'turn/end')
+    return end?.data.reason.kind
+  }
+
   disposeBoundaries(): void {
     if (this.#disposed) return
     this.#disposed = true
+    this.#ownedChild = undefined
     const listener = this.#listenerDisposer
     this.#listenerDisposer = undefined
     let firstError: unknown

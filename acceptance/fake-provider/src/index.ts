@@ -248,6 +248,16 @@ export class FakeProviderAdapter extends LlmAdapter {
       return
     }
 
+    if (requestText.includes('fixture:output-limit')) {
+      const text = 'Fixture reasoning.'
+      yield { type: 'block-start', index: 0, blockType: 'reasoning' }
+      yield { type: 'reasoning-delta', index: 0, text }
+      yield { type: 'block-end', index: 0, block: { type: 'reasoning', text } }
+      yield { type: 'finish', reason: { kind: 'max-tokens' } }
+      this.#records.push({ ...base, result: 'text' })
+      return
+    }
+
     const fixtureKey = Object.keys(this.#fixtures).sort().find((key) => requestText.includes(`fixture:${key}`))
     const value = p3Fixture(options.messages) ?? (fixtureKey === undefined
       ? { schemaVersion: 1, candidates: [] }

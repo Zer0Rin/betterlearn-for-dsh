@@ -78,6 +78,7 @@ export type GenerationFailureCode =
   | 'GENERATION_TIMEOUT'
   | 'GENERATION_SCHEMA_INVALID'
   | 'GENERATION_NO_OUTPUT'
+  | 'GENERATION_OUTPUT_LIMIT'
   | 'GENERATION_PROVIDER_ERROR'
 
 export interface SubmitGenerationParams {

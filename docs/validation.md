@@ -87,3 +87,15 @@ Python测试从463变为334，净减少129项。P2移除了v8双重投影、每�
 支持边界：仅单机单用户macOS/Linux插件；PDF必须有文字层，不提供OCR；TXT/Markdown及解析正文512KiB、PDF文件5MiB；同最终产品schema内升级，不迁移v8或开发期fixture库。依赖安装失败可能需要重试；恢复前必须能成功备份现库，严重损坏到无法读取的现库需人工处理。未做npm发布或远程推送。
 
 复现实跑入口：`scripts/accept-p3.mjs <prepare阶段manifest.json>`；`scripts/accept-p4.mjs <真实DSH rc.8 runtime目录>`。普通用户操作见 [安装说明](install.md)。
+
+## 首次真实试用修复：推理占满输出上限（0.0.1）
+
+2026-08-31，用户手动发起的L2任务使用DeepSeek-V4-Flash / High。只读检查其已有DSH日志确认：规划调用成功；第一批提取的请求上限为8,192 token，返回`outputTokens=8192`、`reasoningTokens=8192`、`finish=max-tokens`，没有结构化答案。DSH workflow仍返回`completed/null`，旧Host将其记录为`GENERATION_NO_OUTPUT`。这是产品沿用短文阶段输出预算的问题，不是原文丢失或API Key错误。
+
+0.0.1将每次请求的输出上限提高到32,768 token（推理与答案共用），保留选定的模型和推理档位，不自动续写或重试。结算时读取本次子任务最后的`turn/end`，将明确的截断记录为`GENERATION_OUTPUT_LIMIT`；界面显示失败原因及“提取已停止”。旧任务的错误码不追溯改写。调用上限增加会提高潜在费用，仍需用户点击提取或重试。
+
+验证：先观察新增回归失败，再修复；TS定向9文件89项、Python状态机与契约54项通过，构建通过。另在隔离的真实rc.8中用fake provider验证了截断失败落库、仅显式重试、第二次失败不可再试、普通提取进入审核；3次fake请求的实际`request/header`均为`maxTokens=32768`。该fake route不提供High档位，模型/High冻结由定向测试覆盖，不能将它算作新预算下的真实High质量验证。
+
+隔离复验记录：`evidence/first-trial-output-limit/final-result.json`。本次修复没有重跑用户的真实请求，也没有调用真实模型。提高上限针对已观察到的截断原因，不保证任意材料在新上限内都能完成；完成质量仍以接下来的实际试用为准。
+
+本机试用安装已通过维护CLI自动备份并升级至0.0.1，随后重启。升级前后全部产品表的内容摘要相同，原任务仍为`failed_retryable`且`retryCount=0`；DSH已有模型请求数保持2次。对照记录为同目录的`before-upgrade.json` / `after-upgrade.json`。没有消耗用户剩余的重试机会。

@@ -15,7 +15,9 @@ export const GENERATION_FINALIZE_RPC_TIMEOUT_MS = 10_000
 export const CORE_RPC_MAX_LINE_BYTES = 32 * 1024 * 1024
 
 export const MAX_ACTIVE_GENERATIONS = 1
-export const GENERATION_MAX_TOKENS = 8_192
+// Reasoning and structured output share this budget. High reasoning exhausted
+// the former 8,192-token cap before producing any answer in a real L2 run.
+export const GENERATION_MAX_TOKENS = 32_768
 export const GENERATION_TIMEOUT_MS = 120_000
 export const WORKFLOW_DISPOSE_GRACE_MS = 5_000
 export const CORE_STABLE_RESET_MS = 60_000

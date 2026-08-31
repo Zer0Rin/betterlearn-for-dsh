@@ -33,6 +33,15 @@ const activationRequest = (): GenerateOptions => ({
 } as unknown as GenerateOptions)
 
 describe('FakeProviderAdapter', () => {
+  test('replays reasoning-only exhaustion without emitting a structured answer', async () => {
+    const adapter = new FakeProviderAdapter()
+    const chunks = []
+    for await (const chunk of adapter.stream(request(undefined, 'output-limit'))) chunks.push(chunk)
+    expect(chunks.at(-1)).toEqual({ type: 'finish', reason: { kind: 'max-tokens' } })
+    expect(chunks).toContainEqual(expect.objectContaining({ type: 'block-end', block: { type: 'reasoning', text: 'Fixture reasoning.' } }))
+    expect(chunks.some(chunk => chunk.type === 'tool-call-delta')).toBe(false)
+    expect(adapter.records).toHaveLength(1)
+  })
   test('is packaged as an acceptance-only DSH plugin', () => {
     expect(name).toBe('nobei-phase1c-fake-provider')
     expect(inject).toEqual(['llm', 'webServer'])
