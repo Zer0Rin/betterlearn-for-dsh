@@ -8,6 +8,20 @@
 - 打包产物包含运行时Core、产品SQL、维护CLI与安装说明，不需要原Nobei checkout。
 - 默认路径隔离检查使用仓库内空 sentinel，不访问旧正式数据库。
 
+## 开发环境准备与首次运行
+
+首次 checkout 或拉取依赖声明有变化的提交后，先同步依赖，再执行所需验证：
+
+```sh
+CI=true corepack pnpm@11.23.0 install --frozen-lockfile
+```
+
+`CI=true`仅用于这次安装，允许无交互终端重建过期的`node_modules`；`--frozen-lockfile`禁止安装时改写锁文件。如果提示锁文件与声明不一致，应核对提交内容，不要去掉此参数绕过。依赖已同步时不需要反复重装。
+
+pnpm 11会在运行脚本前检查依赖并可能自动安装，见[官方配置说明](https://pnpm.io/settings#verifydepsbeforerun)。交付后的独立复核曾遇到旧`node_modules`未同步，直接`pnpm test`在依赖准备阶段报`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`，测试尚未开始。复核者报告使用`CI=true`重新执行后完成依赖同步、全量测试通过且锁文件未变。原交付记录漏记了这一环境准备问题；它不是每次首次运行必然失败，也不是测试断言失败。
+
+同步后按需运行`corepack pnpm@11.23.0 test`或`corepack pnpm@11.23.0 test:phase1b-python`。这仅涉及源码开发环境；交付包用户仍按[安装说明](install.md)操作。
+
 ## 已完成的真实模型验证
 
 拆分前的 Phase 1E 验证曾在明确授权下使用 DSH 官方 DeepSeek provider 与 `deepseek-v4-flash` 完成 20 次运行：
@@ -61,6 +75,12 @@ pnpm exec vitest run \
 - P4：`evidence/p4/2026-08-31T05-38-01-206Z/final-result.json`，以及命令输出、在线备份和恢复前副本。
 
 最终TS验证执行623项：622项直接通过，1项仍要求运行peer只能rc.7的旧测试更新为历史开发基线后定向通过。Python P3阶段328项覆盖通过（2项旧常量期望更新后定向复验），P4另6项维护测试通过，共334项。未反复重跑已验证的全部基线；修复针对失败路径复验。具体实现、退役测试与复核记录见 `p2-*-report.md`、`p3-*-report.md`、`p4-maintenance-report.md` 和 `final-review.md`。
+
+### 交付后的独立复核
+
+用户转述的DeepSeek独立复核报告确认：交付提交`f6c0672` / `dafde22`的TypeScript全量623/623（57文件、exit 0）、Python全量334/334（exit 0）。这些是复核者重新执行的结果，区别于上面的原始交付执行记录；本次文档补充没有重跑全量测试。复核者检查了P2/P3/P4的GO证据，但没有重新执行P3/P4完整验收，因此不能记作第二次独立端到端GO。
+
+Python测试从463变为334，净减少129项。P2移除了v8双重投影、每次读取的全量重放和foreign-data守卫，相应内部行为测试退役或改写；同时新增了最大正文审核、P3提取和P4维护测试。净差值不等于删除测试总数。证据逐字定位、幂等审核、恢复及所有权等产品行为仍有覆盖，具体取舍见[测试调整记录](p2-tests-report.md)。验收标准按行为判断，不要求为已删除的实现维持旧测试条数。
 
 所有本轮模型调用均由fake provider完成，真实模型调用为0。L2实际4次（上限6），L3实际23次（上限36）；预览、审核、刷新与恢复不产生模型调用。历史付费结果继续封存，不能据此宣称新规划prompt对任意真实材料的语义质量已验证。
 

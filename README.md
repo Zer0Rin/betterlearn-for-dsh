@@ -44,11 +44,13 @@ DSH CLI
 当前依赖基线为 DSH `0.1.0-rc.7`、Node.js 24、pnpm 11.23 和 Python 3.12。
 
 ```bash
-corepack pnpm@11.23.0 install --frozen-lockfile
+CI=true corepack pnpm@11.23.0 install --frozen-lockfile
 corepack pnpm@11.23.0 build
 corepack pnpm@11.23.0 test
 corepack pnpm@11.23.0 test:phase1b-python
 ```
+
+首次checkout或依赖声明变化后先执行安装。`CI=true`仅作用于安装命令，允许无交互终端同步旧`node_modules`；锁文件仍由`--frozen-lockfile`保持不变。否则直接测试可能在依赖准备阶段遇到`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`，详见[首次运行说明](docs/validation.md#开发环境准备与首次运行)。
 
 生成安装包：
 
