@@ -235,7 +235,7 @@ def test_prepare_generation_returns_exact_deterministic_request(core: Phase1Core
     assert prepared["revision"] == 2
     assert prepared["schemaVersion"] == 1
     assert prepared["schemaSha256"] == contract.schema_sha256
-    assert prepared["promptVersion"] == "l1-v2"
+    assert prepared["promptVersion"] == "l1-v3"
     assert prepared["document"] == {"text": canonical_text, "sha256": document_sha}
     assert prepared["modelSelection"] == MODEL
     assert re.fullmatch(r"att_[0-9a-f]{20}", str(prepared["attemptId"]))
@@ -246,7 +246,7 @@ def test_prepare_generation_returns_exact_deterministic_request(core: Phase1Core
         "documentSha256": document_sha,
         "schemaVersion": 1,
         "schemaSha256": contract.schema_sha256,
-        "promptVersion": "l1-v2",
+        "promptVersion": "l1-v3",
         "modelSelection": MODEL,
     }
     expected_digest = hashlib.sha256(

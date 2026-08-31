@@ -70,7 +70,7 @@ from nobei_core.repository import (
 
 _SUPPORTED_MEDIA_TYPES = frozenset({"text/plain", "text/markdown", "application/pdf"})
 _EVENT_PAGE_LIMIT = 200
-_PROMPT_VERSION = "l1-v2"
+_PROMPT_VERSION = "l1-v3"
 _REVIEW_FIELDS = frozenset(
     {"candidateId", "action", "expectedRevision", "idempotencyKey"}
 )

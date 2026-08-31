@@ -163,7 +163,7 @@ def test_reads_wait_for_whole_write_transaction_and_observe_one_snapshot(
         "documentSha256": hashlib.sha256(b"valid").hexdigest(),
         "schemaVersion": core._contract.schema_version,
         "schemaSha256": core._contract.schema_sha256,
-        "promptVersion": "l1-v2",
+        "promptVersion": "l1-v3",
         "modelSelection": model_selection,
     }
     request_digest = hashlib.sha256(

@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
+import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
 import {
   validatePlannerGroups,
   promptFor,
@@ -7,7 +8,7 @@ import {
   toWorkflowSchema,
   WORKFLOW_SCRIPT,
 } from '../src/product/generation-adapter.js'
-import type { CandidateContract } from '../src/product/contract.js'
+import { loadCandidateContract, type CandidateContract } from '../src/product/contract.js'
 import type { PreparedGeneration } from '../src/product/types.js'
 
 const structured = {
@@ -167,11 +168,44 @@ describe('StructuredGenerationAdapter', () => {
       type: 'object',
       properties: {
         schemaVersion: { type: 'integer', const: 1 },
-        title: { type: 'string' },
+        title: { type: 'string', description: 'Length: at least 1 and at most 120 Unicode characters.' },
         kind: { type: 'string', enum: ['concept', 'fact'] },
-        items: { type: 'array', items: { type: 'string' } },
+        items: { type: 'array', description: 'Item count: at most 20.', items: { type: 'string' } },
       },
     })
+  })
+
+  test('advertises every contract bound in a DSH-supported field without changing validation', () => {
+    const full = loadCandidateContract(process.cwd())
+    const schema = toWorkflowSchema(full.schema) as any
+    expect(() => assertSupportedJsonSchema(schema)).not.toThrow()
+    const candidates = schema.properties.candidates
+    expect(candidates.description).toBe('Item count: at most 20.')
+    expect(candidates.items.properties.title.description).toBe('Length: at least 1 and at most 120 Unicode characters.')
+    expect(candidates.items.properties.statement.description).toBe('Length: at least 1 and at most 2000 Unicode characters.')
+    const evidence = candidates.items.properties.evidence
+    expect(evidence.description).toBe('Item count: at least 1 and at most 3.')
+    expect(evidence.items.properties.quote.description).toBe('Length: at least 1 and at most 2000 Unicode characters.')
+    for (const key of ['prefix', 'suffix']) {
+      expect(evidence.items.properties[key].description).toBe('Length: at most 200 Unicode characters.')
+    }
+    expect(full.validate({ ...structured, candidates: Array(33).fill(structured.candidates[0]) }))
+      .toContainEqual({ path: '/candidates', keyword: 'maxItems' })
+    const longPrefix = structuredClone(structured)
+    longPrefix.candidates[0]!.evidence[0]!.prefix = '字'.repeat(323)
+    expect(full.validate(longPrefix)).toContainEqual({ path: '/candidates/0/evidence/0/prefix', keyword: 'maxLength' })
+    expect(toWorkflowSchema({ type: 'string', description: 'Adjacent context.', maxLength: 200 }))
+      .toEqual({ type: 'string', description: 'Adjacent context. Length: at most 200 Unicode characters.' })
+  })
+
+  test('v3 directs bounded selection and empty context for unique quotes; v2 stays frozen', () => {
+    const input = { document: { text: '唯一事实。' } }
+    const prompt = promptFor({ ...input, promptVersion: 'l1-v3' })
+    expect(prompt).toContain('Follow every item-count and character-length limit in the structured_output field descriptions.')
+    expect(prompt).toContain('Select the key, non-redundant knowledge points within the candidate limit; do not enumerate every minor detail.')
+    expect(prompt).toContain('For a unique quote, set prefix and suffix to empty strings.')
+    expect(prompt).toContain('SOURCE:\n唯一事实。')
+    expect(promptFor({ ...input, promptVersion: 'l1-v2' })).not.toContain('field descriptions')
   })
 
   test('creates one dynamic parent/workflow and installs the final tool guard on parent and child', async () => {
