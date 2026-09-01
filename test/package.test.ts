@@ -96,6 +96,14 @@ describe('phase1 external bundle package', () => {
     expect(pkg.scripts.pretest).not.toContain('stage:v8')
     expect(pkg.scripts.prepack).not.toContain('stage:v8')
   })
+
+  test('cleans generated output before building so removed modules are not packed', async () => {
+    const pkg = JSON.parse(await readFile('package.json', 'utf8'))
+    const cleaner = await readFile('scripts/clean-build.mjs', 'utf8')
+
+    expect(pkg.scripts.build).toMatch(/^node scripts\/clean-build\.mjs && /)
+    expect(cleaner).toContain("rm('lib', { recursive: true, force: true })")
+  })
 })
 
 
