@@ -101,6 +101,23 @@ export class GenerationCoordinator {
     ))
   }
 
+  async terminateRun(runId: string): Promise<void> {
+    const flight = this.#flights.get(runId)
+    if (!flight) return
+    if (flight.terminal) {
+      await flight.done
+      return
+    }
+    flight.terminal = true
+    clearTimeout(flight.timer)
+    flight.abort.abort()
+    flight.handle.cancel()
+    await flight.cleanup()
+    if (this.#flights.get(runId) === flight) this.#flights.delete(runId)
+    flight.finishDone()
+    this.#changes.emit(runId)
+  }
+
   dispose(): Promise<void> {
     if (this.#disposePromise) return this.#disposePromise
     this.#accepting = false

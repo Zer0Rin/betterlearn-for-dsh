@@ -65,6 +65,15 @@ describe('FixedCoreRpcClient', () => {
     await expect(pending).resolves.toEqual({ knowledgePoint: { knowledgePointId: params.knowledgePointId } })
   })
 
+  test('writes the closed run deletion request', async () => {
+    const { client, input, requests } = pair()
+    const params = { runId: 'job_0123456789abcdefabcd' }
+    const pending = client.deleteRun(params)
+    expect(requests).toEqual([{ jsonrpc: '2.0', id: 1, method: 'runs.delete', params }])
+    input.write(result(1, { ...params, deleted: true }))
+    await expect(pending).resolves.toEqual({ ...params, deleted: true })
+  })
+
   test('assembles fragmented UTF-8 and dispatches multiple response frames', async () => {
     const { client, input, requests } = pair()
     const first = client.getRun({ runId: 'job_0123456789abcdefabcd' })

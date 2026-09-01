@@ -117,6 +117,12 @@ export async function applyProductPlugin(
     updateKnowledgePoint: (params, signal) => supervisor
       ? supervisor.withReadyClient((client) => client.updateKnowledgePoint(params, signal))
       : Promise.reject(new Error('CORE_UNAVAILABLE')),
+    deleteRun: async (runId, signal) => {
+      await coordinator!.terminateRun(runId)
+      return supervisor
+        ? supervisor.withReadyClient((client) => client.deleteRun({ runId }, signal))
+        : Promise.reject(new Error('CORE_UNAVAILABLE'))
+    },
   }
   const state = {
     get state(): CoreSupervisor['state'] {

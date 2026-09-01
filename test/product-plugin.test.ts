@@ -31,6 +31,7 @@ function dependencies(options: { startError?: Error } = {}) {
     watchRun: vi.fn(() => vi.fn()),
     launchImport: vi.fn(),
     launchRetry: vi.fn(),
+    terminateRun: vi.fn(async () => undefined),
     dispose: vi.fn(async () => { order.push('coordinator:dispose') }),
   }
   const resolver = { resolve: vi.fn() }
@@ -112,6 +113,12 @@ describe('phase1c product plugin', () => {
     const update = { knowledgePointId: 'kp_0123456789abcdefabcd', title: '新标题', statement: '新陈述' }
     await operations.updateKnowledgePoint(update)
     expect(updateKnowledgePoint).toHaveBeenCalledWith(update, undefined)
+    const deleteRun = vi.fn(async () => ({ runId: 'job_delete', deleted: true }))
+    supervisor.withReadyClient.mockImplementation(async (use: (client: { deleteRun: typeof deleteRun }) => unknown) => use({ deleteRun }))
+    await operations.deleteRun('job_delete')
+    expect(coordinator.terminateRun).toHaveBeenCalledWith('job_delete')
+    expect(deleteRun).toHaveBeenCalledWith({ runId: 'job_delete' }, undefined)
+    expect(coordinator.terminateRun.mock.invocationCallOrder[0]).toBeLessThan(deleteRun.mock.invocationCallOrder[0]!)
     await dispose()
     await dispose()
     expect(order).toEqual([

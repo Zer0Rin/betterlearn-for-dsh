@@ -216,6 +216,35 @@ describe('GenerationCoordinator', () => {
     expect(facts.submits).toEqual([])
   })
 
+  test('terminates an active provider flight without finalizing it', async () => {
+    const { coordinator, outcome, facts } = harness()
+    const changed = vi.fn()
+    coordinator.watchRun('run_1', changed)
+    await coordinator.launchImport(importParams())
+
+    await coordinator.terminateRun('run_1')
+    expect(facts.cancel).toBe(1)
+    expect(facts.dispose).toBe(1)
+    expect(facts.starts[0]?.signal.aborted).toBe(true)
+    expect(facts.submits).toEqual([])
+    expect(facts.fails).toEqual([])
+    expect(coordinator.activeCount).toBe(0)
+    expect(coordinator.getProgress('run_1')).toBeNull()
+    expect(changed).toHaveBeenCalledOnce()
+
+    outcome.resolve({ ok: true, value: { schemaVersion: 1, candidates: [] } })
+    await flush()
+    expect(facts.submits).toEqual([])
+    expect(facts.fails).toEqual([])
+  })
+
+  test('terminating an unknown run is a no-op', async () => {
+    const { coordinator, facts } = harness()
+    await expect(coordinator.terminateRun('run_missing')).resolves.toBeUndefined()
+    expect(facts.cancel).toBe(0)
+    expect(facts.dispose).toBe(0)
+  })
+
   test('closes a stuck generation exactly at the 120000 ms boundary', async () => {
     vi.useFakeTimers()
     const { coordinator, outcome, facts } = harness()

@@ -11,6 +11,7 @@ import type {
   KnowledgePointSnapshot,
   KnowledgePointUpdateResult,
   RunHistoryResult,
+  RunDeleteResult,
 } from './types.js'
 import type { GenerationProgress } from '../generation-progress.js'
 
@@ -56,6 +57,10 @@ function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> 
 
 function patch<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, signal)
+}
+
+function del<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, { method: 'DELETE' }, signal)
 }
 
 export function createClientApi(): ClientApi {
@@ -123,6 +128,9 @@ export function createClientApi(): ClientApi {
         input,
         signal,
       )
+    },
+    deleteRun(runId, signal) {
+      return del<RunDeleteResult>(`/nobei/v1/runs/${encodeURIComponent(runId)}`, signal)
     },
   }
 }

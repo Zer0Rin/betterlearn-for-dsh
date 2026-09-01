@@ -156,4 +156,9 @@ export interface KnowledgePointUpdateResult extends Record<string, unknown> {
   run: CoreRunSnapshot
 }
 
+export interface RunDeleteResult extends Record<string, unknown> {
+  runId: OpaqueId
+  deleted: true
+}
+
 export type CoreObjectResult = Record<string, unknown>

@@ -24,6 +24,7 @@ import type {
   ReviewCandidateParams,
   RetryAndPrepareParams,
   RunHistoryResult,
+  RunDeleteResult,
   UpdateKnowledgePointParams,
 } from './types.js'
 
@@ -40,6 +41,7 @@ export interface ProductOperations {
   reviewCandidate(params: ReviewCandidateParams, signal?: AbortSignal): Promise<CoreObjectResult>
   listKnowledgePoints(runId: string, signal?: AbortSignal): Promise<KnowledgePointList>
   updateKnowledgePoint(params: UpdateKnowledgePointParams, signal?: AbortSignal): Promise<CoreObjectResult>
+  deleteRun(runId: string, signal?: AbortSignal): Promise<RunDeleteResult>
 }
 
 interface SupervisorState {
@@ -53,6 +55,7 @@ type RouteMatch =
   | { kind: 'progress'; method: 'GET'; runId: string }
   | { kind: 'runs'; method: 'GET' }
   | { kind: 'run'; method: 'GET'; runId: string }
+  | { kind: 'run-delete'; method: 'DELETE'; runId: string }
   | { kind: 'events'; method: 'GET'; runId: string; after: string | undefined; queryValid: boolean }
   | { kind: 'retry'; method: 'POST'; runId: string }
   | { kind: 'candidates'; method: 'GET'; runId: string }
@@ -76,12 +79,14 @@ function sendError(res: ServerResponse, status: number, code: string, extra?: Re
   sendJson(res, status, { ok: false, error: { code } }, extra)
 }
 
-function matchRoute(url: URL): RouteMatch | undefined {
+function matchRoute(url: URL, requestMethod?: string): RouteMatch | undefined {
   if (url.pathname === '/nobei/v1/documents/preview' && url.search === '') return { kind: 'preview', method: 'POST' }
   if (url.pathname === '/nobei/v1/imports' && url.search === '') return { kind: 'import', method: 'POST' }
   if (url.pathname === '/nobei/v1/runs' && url.search === '') return { kind: 'runs', method: 'GET' }
   let match = /^\/nobei\/v1\/runs\/([^/]+)$/.exec(url.pathname)
-  if (match && url.search === '') return { kind: 'run', method: 'GET', runId: match[1] }
+  if (match && url.search === '') return requestMethod === 'DELETE'
+    ? { kind: 'run-delete', method: 'DELETE', runId: match[1] }
+    : { kind: 'run', method: 'GET', runId: match[1] }
   match = /^\/nobei\/v1\/runs\/([^/]+)\/stream$/.exec(url.pathname)
   if (match && url.search === '') return { kind: 'stream', method: 'GET', runId: match[1] }
   match = /^\/nobei\/v1\/runs\/([^/]+)\/progress$/.exec(url.pathname)
@@ -253,17 +258,17 @@ export function registerProductRoutes(
       const trust = authorizeProductRequest(req, mutation, ctx.webServer.port)
       if (!trust.ok) return sendError(res, trust.status, trust.code)
       const url = new URL(req.url ?? '/', 'http://127.0.0.1')
-      const route = matchRoute(url)
+      const route = matchRoute(url, req.method)
       if (!route) return sendError(res, 404, 'ROUTE_NOT_FOUND')
       if (req.method !== route.method) {
         return sendError(res, 405, 'METHOD_NOT_ALLOWED', { allow: route.method })
       }
 
       let body: unknown
-      if (route.method === 'GET') {
+      if (route.method === 'GET' || route.method === 'DELETE') {
         if (requestHasBody(req)) {
           req.resume()
-          return sendError(res, 400, 'GET_BODY_FORBIDDEN')
+          return sendError(res, 400, route.method === 'GET' ? 'GET_BODY_FORBIDDEN' : 'DELETE_BODY_FORBIDDEN')
         }
       } else {
         if (contentType(req) !== 'application/json') return sendError(res, 415, 'JSON_REQUIRED')
@@ -339,6 +344,7 @@ export function registerProductRoutes(
         else if (route.kind === 'import') result = await operations.launchImport(importParams as ImportAndPrepareParams)
         else if (route.kind === 'runs') result = await operations.listRuns()
         else if (route.kind === 'run') result = await operations.getRun(route.runId)
+        else if (route.kind === 'run-delete') result = await operations.deleteRun(route.runId)
         else if (route.kind === 'progress') result = operations.getProgress(route.runId)
         else if (route.kind === 'events') result = await operations.listEvents(route.runId, after as number)
         else if (route.kind === 'retry') result = await operations.launchRetry(retryParams as RetryAndPrepareParams)

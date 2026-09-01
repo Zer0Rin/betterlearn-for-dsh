@@ -144,6 +144,11 @@ describe('phase1d Client API', () => {
       headers: { 'content-type': 'application/json' },
       signal: controller.signal,
     })
+
+    await api.deleteRun(runId, controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith(`/nobei/v1/runs/${runId}`, {
+      method: 'DELETE', headers: {}, signal: controller.signal,
+    })
   })
 
   test('encodes resource IDs instead of interpolating raw path data', async () => {

@@ -23,6 +23,7 @@ import type {
   RetryAndPrepareParams,
   ReviewCandidateParams,
   RunHistoryResult,
+  RunDeleteResult,
   RunParams,
   SubmitGenerationParams,
   UpdateKnowledgePointParams,
@@ -137,6 +138,10 @@ export class FixedCoreRpcClient {
 
   updateKnowledgePoint(params: UpdateKnowledgePointParams, signal?: AbortSignal): Promise<CoreObjectResult> {
     return this.#request('knowledge_points.update', params, CORE_WRITE_RPC_TIMEOUT_MS, signal)
+  }
+
+  deleteRun(params: RunParams, signal?: AbortSignal): Promise<RunDeleteResult> {
+    return this.#request('runs.delete', params, CORE_WRITE_RPC_TIMEOUT_MS, signal) as Promise<RunDeleteResult>
   }
 
   close(): void {

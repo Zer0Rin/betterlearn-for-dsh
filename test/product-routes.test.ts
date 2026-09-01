@@ -34,6 +34,7 @@ function operations(override: Partial<ProductOperations> = {}): ProductOperation
     reviewCandidate: vi.fn(async () => ({ candidateId, status: 'accepted' })),
     listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [] })),
     updateKnowledgePoint: vi.fn(async () => ({ knowledgePoint: { knowledgePointId } })),
+    deleteRun: vi.fn(async id => ({ runId: id, deleted: true as const })),
     ...override,
   }
 }
@@ -97,6 +98,7 @@ const routes = [
   { key: 'reviewCandidate', method: 'POST', path: `/nobei/v1/candidates/${candidateId}/review`, body: JSON.stringify({ action: 'accept', expectedRevision: 2, idempotencyKey }), status: 200 },
   { key: 'listKnowledgePoints', method: 'GET', path: `/nobei/v1/runs/${runId}/knowledge-points`, status: 200 },
   { key: 'updateKnowledgePoint', method: 'PATCH', path: `/nobei/v1/knowledge-points/${knowledgePointId}`, body: JSON.stringify({ title: '新标题', statement: '新陈述' }), status: 200 },
+  { key: 'deleteRun', method: 'DELETE', path: `/nobei/v1/runs/${runId}`, status: 200 },
 ] as const
 
 const states: CoreState[] = ['STARTING', 'READY', 'RESTARTING', 'DEGRADED', 'DISPOSING', 'DISPOSED']
@@ -200,6 +202,8 @@ describe('product route table', () => {
     ['missing knowledge point field', { method: 'PATCH', path: `/nobei/v1/knowledge-points/${knowledgePointId}`, body: JSON.stringify({ title: '标题' }) }, 400, 'REQUEST_INPUT_INVALID'],
     ['extra knowledge point field', { method: 'PATCH', path: `/nobei/v1/knowledge-points/${knowledgePointId}`, body: JSON.stringify({ title: '标题', statement: '陈述', extra: true }) }, 400, 'REQUEST_INPUT_INVALID'],
     ['overlong knowledge point title', { method: 'PATCH', path: `/nobei/v1/knowledge-points/${knowledgePointId}`, body: JSON.stringify({ title: 'x'.repeat(121), statement: '陈述' }) }, 400, 'REQUEST_INPUT_INVALID'],
+    ['bad delete id', { method: 'DELETE', path: '/nobei/v1/runs/not-an-id' }, 400, 'REQUEST_INPUT_INVALID'],
+    ['DELETE body', { method: 'DELETE', path: `/nobei/v1/runs/${runId}`, body: '{}', headers: { 'content-length': '2' } }, 400, 'DELETE_BODY_FORBIDDEN'],
   ])('returns a closed error for %s', async (_name, input, status, code) => {
     const ops = operations()
     const { port } = await listen('READY', ops)
@@ -213,11 +217,22 @@ describe('product route table', () => {
   test('forwards an exact knowledge-point update', async () => {
     const ops = operations()
     const { port } = await listen('READY', ops)
-    const response = await send(port, routes.at(-1)!)
+    const response = await send(port, routes.find(route => route.key === 'updateKnowledgePoint')!)
     expect(response.status).toBe(200)
     expect(ops.updateKnowledgePoint).toHaveBeenCalledWith({
       knowledgePointId, title: '新标题', statement: '新陈述',
     })
+  })
+
+  test('requires same-origin authorization for deletion', async () => {
+    const ops = operations()
+    const { port } = await listen('READY', ops)
+    const response = await send(port, {
+      method: 'DELETE', path: `/nobei/v1/runs/${runId}`,
+      headers: { origin: 'http://example.com', 'sec-fetch-site': 'cross-site' },
+    })
+    expect(response).toMatchObject({ status: 403, body: { error: { code: 'CROSS_ORIGIN' } } })
+    expect(ops.deleteRun).not.toHaveBeenCalled()
   })
 
   test('maps generation capacity to 429 without leaking detail', async () => {
