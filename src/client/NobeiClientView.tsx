@@ -68,13 +68,14 @@ export function NobeiWorkspace({
         onSelect={workspace.openRun} onDelete={deleteAndRefresh} onNew={workspace.reset} />}
       <main className="nobei-client" data-testid="nobei-client-view">
       <header className="nobei-client__masthead" data-testid="nobei-shared-header">
-        <div>
+        <div className="nobei-client__masthead-intro">
           <p className="nobei-client__brand">Nobei</p>
           <h1>把原文整理成可核对的知识</h1>
         </div>
         <div>
           <p className="nobei-client__source-identity"><span>当前材料</span><strong>{sourceName}</strong></p>
-          {activeModel && <p data-testid="nobei-active-model">本次模型：{modelSelectionLabel(activeModel)}</p>}
+          {activeModel && <p className="nobei-client__active-model"
+            data-testid="nobei-active-model">本次模型：{modelSelectionLabel(activeModel)}</p>}
         </div>
       </header>
       <div className="nobei-client__workspace" data-workspace-screen={workspace.screen}>

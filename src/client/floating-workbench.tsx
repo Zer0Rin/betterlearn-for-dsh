@@ -180,6 +180,7 @@ export function BetterLearnFloatingApp({
 
   return <aside className="betterlearn-floating-panel" data-testid="betterlearn-floating-panel"
     data-screen={screen} data-history-open={historyOpen ? 'true' : 'false'}
+    data-compact-height={size.height <= 420 ? 'true' : 'false'}
     data-resizing={resizing ? 'true' : 'false'} style={panelStyle} aria-label="BetterLearn 工作台">
     <div className="betterlearn-resize-handle betterlearn-resize-handle--left"
       data-testid="betterlearn-resize-left" role="separator" aria-label="调整 BetterLearn 宽度"

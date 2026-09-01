@@ -27,6 +27,8 @@ describe('phase1d result summary', () => {
     for (const value of ['光合作用.md', '已接受', '已修改', '已拒绝', '正式知识点', '只展示 Core 返回的内容']) {
       expect(output).toContain(value)
     }
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-result-meta' })).toBeDefined()
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-knowledge-list' })).toBeDefined()
     expect(output).not.toContain('未被正式接受的候选')
     act(() => renderer.root.findByProps({ 'data-testid': 'nobei-reset' }).props.onClick())
     expect(onReset).toHaveBeenCalledTimes(1)

@@ -51,8 +51,8 @@ export function clampWorkbenchSize(size: WorkbenchSize, viewport: ViewportSize):
   const maxWidth = Math.max(0, Math.min(1080, viewport.width - 32))
   const maxHeight = Math.max(0, viewport.height - 32)
   return {
-    width: Math.min(maxWidth, Math.max(Math.min(360, maxWidth), Math.round(size.width))),
-    height: Math.min(maxHeight, Math.max(Math.min(420, maxHeight), Math.round(size.height))),
+    width: Math.min(maxWidth, Math.max(Math.min(300, maxWidth), Math.round(size.width))),
+    height: Math.min(maxHeight, Math.max(Math.min(340, maxHeight), Math.round(size.height))),
   }
 }
 

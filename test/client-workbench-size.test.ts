@@ -40,9 +40,9 @@ describe('workbench size model', () => {
     )).toEqual({ width: 460, height: 680 })
   })
 
-  test('clamps both axes to desktop bounds', () => {
+  test('clamps both axes to compact desktop bounds', () => {
     expect(clampWorkbenchSize({ width: 10, height: 9 }, { width: 800, height: 600 }))
-      .toEqual({ width: 360, height: 420 })
+      .toEqual({ width: 300, height: 340 })
     expect(clampWorkbenchSize({ width: 5000, height: 5000 }, { width: 800, height: 600 }))
       .toEqual({ width: 768, height: 568 })
   })

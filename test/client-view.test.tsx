@@ -218,6 +218,9 @@ describe('phase1d composed workspace', () => {
       expect(renderer.root.findAll(node => node.props['data-workspace-screen'] !== undefined)).toHaveLength(1)
       expect(renderer.root.findByProps({ 'data-workspace-screen': expected })).toBeDefined()
       expect(renderer.root.findByProps({ 'data-testid': 'nobei-shared-header' })).toBeDefined()
+      expect(renderer.root.findByProps({ className: 'nobei-client__masthead-intro' })).toBeDefined()
+      expect(renderer.root.findByProps({ className: 'nobei-client__active-model',
+        'data-testid': 'nobei-active-model' })).toBeDefined()
       if (status) expect(JSON.stringify(renderer.toJSON())).toContain('细胞生物学.md')
       act(() => renderer.unmount())
     }

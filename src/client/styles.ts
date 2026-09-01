@@ -295,6 +295,29 @@ export const CLIENT_CSS = `
   .nobei-client__result-counts div { padding: 9px 7px; }
   .nobei-client__knowledge-list article { padding: 12px; }
 }
+@container (max-width: 340px) {
+  .nobei-client { padding: 9px; font-size: 13px; line-height: 1.5; }
+  .nobei-client__masthead { margin-block-end: 10px; padding-block-end: 9px; }
+  .nobei-client__masthead-intro, .nobei-client__active-model, .nobei-client__result-meta { display: none; }
+  .nobei-client__source-identity { font-size: 0.75rem; }
+  .nobei-client__import, .nobei-client__progress, .nobei-client__result { padding: 11px 9px; }
+  .nobei-client__knowledge-list { gap: 7px; }
+  .nobei-client__knowledge-list article { padding: 10px 9px; }
+  .nobei-client__knowledge-heading { gap: 7px; }
+  .nobei-client__knowledge-heading button { padding: 5px 7px; }
+  .nobei-client__result > button { margin-block-start: 12px; }
+}
+.betterlearn-floating-panel[data-compact-height="true"] .betterlearn-floating-header {
+  min-height: 44px;
+  padding-block: 6px;
+}
+.betterlearn-floating-panel[data-compact-height="true"] .nobei-client__masthead {
+  margin-block-end: 10px;
+  padding-block-end: 9px;
+}
+.betterlearn-floating-panel[data-compact-height="true"] .nobei-client__import,
+.betterlearn-floating-panel[data-compact-height="true"] .nobei-client__progress,
+.betterlearn-floating-panel[data-compact-height="true"] .nobei-client__result { padding-block: 11px; }
 `
 
 export function ensureClientStyles(doc: Document): void {

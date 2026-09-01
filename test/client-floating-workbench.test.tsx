@@ -221,6 +221,22 @@ describe('BetterLearn floating workbench shell', () => {
       .toEqual({ width: 500, height: 420 })
   })
 
+  test('marks the panel compact only while its height is 420px or less', () => {
+    renderEmpty()
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+      .props['data-compact-height']).toBe('true')
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-resize-bottom' }).props.onPointerDown({
+      clientX: 600, clientY: 500, pointerId: 8,
+      preventDefault: vi.fn(), currentTarget: { setPointerCapture: vi.fn() },
+    }))
+    act(() => dispatchWindow('pointermove', { clientX: 600, clientY: 580, pointerId: 8 }))
+
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+      .props['data-compact-height']).toBe('false')
+  })
+
   test('restores sizes independently when the workbench screen changes', async () => {
     const sizeStorage = new MemoryStorage()
     sizeStorage.setItem(WORKBENCH_SIZE_STORAGE_KEY, JSON.stringify({
