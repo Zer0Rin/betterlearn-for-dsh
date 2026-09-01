@@ -2,7 +2,12 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { BetterLearnFloatingApp } from '../src/client/floating-workbench.js'
 import { LEARNING_LAYOUT_STORAGE_KEY } from '../src/client/learning-layout.js'
-import { LEARNING_BOOK_STORAGE_KEY } from '../src/client/learning-book-library.js'
+import {
+  LEARNING_BOOK_STORAGE_KEY,
+  createLearningBook,
+  readLearningBooks,
+  writeLearningBooks,
+} from '../src/client/learning-book-library.js'
 import { sessionKey } from '../src/client/session-state.js'
 import type { ClientApi, KnowledgePointSnapshot, RunSnapshot } from '../src/client/types.js'
 import { WORKBENCH_SIZE_STORAGE_KEY } from '../src/client/workbench-size.js'
@@ -57,6 +62,13 @@ const api = {
   importText: vi.fn(), retryRun: vi.fn(), reviewCandidate: vi.fn(),
   getRun: vi.fn(), listEvents: vi.fn(), listCandidates: vi.fn(), listKnowledgePoints: vi.fn(),
 } as unknown as ClientApi
+
+const managementPoint: KnowledgePointSnapshot = {
+  knowledgePointId: 'kp_management', documentId: 'doc_management', type: 'concept',
+  title: '管理学习书', statement: '学习书可以被安全地修改和删除。',
+  evidence: [{ seq: 0, quote: '安全地修改和删除', textStart: 0, textEnd: 9,
+    contextBefore: '', contextAfter: '。' }],
+}
 
 const modelDirectoryState = {
   current: { provider: 'provider-a', model: 'model-a' }, routable: true, status: 'ready' as const,
@@ -444,5 +456,100 @@ describe('BetterLearn floating workbench shell', () => {
     act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
     act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-library-entry' }).props.onClick())
     expect(renderer.root.findAll(node => node.props.className === 'betterlearn-library__book')).toHaveLength(2)
+  })
+
+  test('updates an unstarted book in place and saves a started edit as a fresh version', () => {
+    const sizeStorage = new MemoryStorage()
+    const unstarted = createLearningBook({
+      title: '未开始', points: [managementPoint], sourceText: '安全地修改和删除。',
+    }, { bookId: 'book-draft', createdAt: '2026-09-01T10:00:00.000Z' })
+    const started = {
+      ...createLearningBook({
+        title: '已开始', points: [managementPoint], sourceText: '安全地修改和删除。',
+      }, { bookId: 'book-started', createdAt: '2026-09-01T09:00:00.000Z' }),
+      courseId: 'course_0123456789abcdefabcd',
+      progress: { completed: 1, total: 1, mastery: 70 },
+    }
+    expect(writeLearningBooks(sizeStorage, [started, unstarted])).toBe(true)
+
+    renderEmpty(sizeStorage)
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-library-entry' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-library-manage' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-edit-book-draft' }).props.onClick())
+
+    expect(renderer.root.findByProps({ 'data-testid': 'learning-book-title' }).props.value).toBe('未开始')
+    expect(JSON.stringify(renderer.toJSON())).toContain('保存修改')
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-title' }).props
+      .onChange({ currentTarget: { value: '未开始 · 已修改' } }))
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-create' }).props.onClick())
+
+    let saved = readLearningBooks(sizeStorage)
+    expect(saved).toHaveLength(2)
+    expect(saved.find(book => book.bookId === 'book-draft')?.title).toBe('未开始 · 已修改')
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-library-manage' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-edit-book-started' }).props.onClick())
+    expect(JSON.stringify(renderer.toJSON())).toContain('保存为新版本')
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-title' }).props
+      .onChange({ currentTarget: { value: '已开始 · 新版' } }))
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-create' }).props.onClick())
+
+    saved = readLearningBooks(sizeStorage)
+    expect(saved).toHaveLength(3)
+    expect(saved.find(book => book.bookId === 'book-started')).toMatchObject({
+      title: '已开始', courseId: started.courseId, progress: started.progress,
+    })
+    const revision = saved.find(book => book.title === '已开始 · 新版')
+    expect(revision?.bookId).not.toBe('book-started')
+    expect(revision).not.toHaveProperty('courseId')
+    expect(revision).not.toHaveProperty('progress')
+  })
+
+  test('keeps a started book when Core deletion fails and removes it after a retry', async () => {
+    const sizeStorage = new MemoryStorage()
+    const started = {
+      ...createLearningBook({
+        title: '待删除', points: [managementPoint], sourceText: '安全地修改和删除。',
+      }, { bookId: 'book-delete', createdAt: '2026-09-01T09:00:00.000Z' }),
+      courseId: 'course_0123456789abcdefabcd',
+      progress: { completed: 1, total: 1, mastery: 70 },
+    }
+    expect(writeLearningBooks(sizeStorage, [started])).toBe(true)
+    const deleteLearningCourse = vi.fn()
+      .mockImplementationOnce(async () => {
+        expect(readLearningBooks(sizeStorage)).toHaveLength(1)
+        throw new Error('offline')
+      })
+      .mockImplementationOnce(async () => {
+        expect(readLearningBooks(sizeStorage)).toHaveLength(1)
+        return { courseId: started.courseId, deleted: true as const }
+      })
+    const managementApi = { ...api, deleteLearningCourse } as unknown as ClientApi
+    const source = sessionSource()
+    act(() => {
+      renderer = create(<BetterLearnFloatingApp
+        sessions={{ list: source, subagentAddress: () => undefined } as never}
+        modelDirectories={{} as never} storage={storage as never}
+        sizeStorage={sizeStorage} api={managementApi} />)
+    })
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-library-entry' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-library-manage' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-delete-book-delete' }).props.onClick())
+
+    await act(async () => renderer.root.findByProps({
+      'data-testid': 'learning-book-delete-confirm-book-delete',
+    }).props.onClick())
+    expect(readLearningBooks(sizeStorage)).toHaveLength(1)
+    expect(JSON.stringify(renderer.toJSON())).toContain('删除失败，请重试')
+
+    await act(async () => renderer.root.findByProps({
+      'data-testid': 'learning-book-delete-confirm-book-delete',
+    }).props.onClick())
+    expect(deleteLearningCourse).toHaveBeenCalledTimes(2)
+    expect(deleteLearningCourse).toHaveBeenCalledWith(started.courseId)
+    expect(readLearningBooks(sizeStorage)).toEqual([])
+    expect(JSON.stringify(renderer.toJSON())).toContain('还没有学习书')
   })
 })

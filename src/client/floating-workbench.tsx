@@ -12,7 +12,8 @@ import {
 } from './components/LearningLibrary.js'
 import { LearningSpace } from './components/LearningSpace.js'
 import {
-  createLearningBook, readLearningBooks, updateLearningBookCourse, writeLearningBooks, type LearningBook,
+  createLearningBook, hasLearningStarted, readLearningBooks, reviseLearningBook,
+  updateLearningBookCourse, writeLearningBooks, type LearningBook, type LearningBookIdentity,
 } from './learning-book-library.js'
 import { readLearningLayout, writeLearningLayout } from './learning-layout.js'
 import { NobeiWorkspace } from './NobeiClientView.js'
@@ -59,6 +60,7 @@ type WorkbenchArea = 'home' | 'knowledge' | 'compose' | 'library'
 interface LearningBookDraft {
   points: KnowledgePointSnapshot[]
   sourceText: string
+  editingBook?: LearningBook
 }
 
 function currentViewport(): ViewportSize {
@@ -245,26 +247,51 @@ export function BetterLearnFloatingApp({
     setArea('compose')
   }
 
-  function finishLearningBook(draft: LearningBookDraftResult): void {
-    if (bookDraft === undefined) return
+  function editLearningBook(book: LearningBook): void {
+    setBookDraft({ points: book.points, sourceText: book.sourceText, editingBook: book })
+    setNewBookId(undefined)
+    setHistoryOpen(false)
+    setArea('compose')
+  }
+
+  function nextLearningBookIdentity(): LearningBookIdentity {
     let bookId: string
     do {
       bookId = `book-${Date.now().toString(36)}-${(bookSequence.current++).toString(36)}`
     } while (learningBooks.some(book => book.bookId === bookId))
-    const book = createLearningBook({
-      title: draft.title,
-      points: draft.points,
-      sourceText: bookDraft.sourceText,
-    }, { bookId, createdAt: new Date().toISOString() })
-    const nextBooks = [book, ...learningBooks]
+    return { bookId, createdAt: new Date().toISOString() }
+  }
+
+  function finishLearningBook(draft: LearningBookDraftResult): void {
+    if (bookDraft === undefined) return
+    const revision = bookDraft.editingBook === undefined
+      ? { book: createLearningBook({
+        title: draft.title,
+        points: draft.points,
+        sourceText: bookDraft.sourceText,
+      }, nextLearningBookIdentity()) }
+      : reviseLearningBook(bookDraft.editingBook, draft, nextLearningBookIdentity())
+    const nextBooks = revision.replacesBookId === undefined
+      ? [revision.book, ...learningBooks]
+      : learningBooks.map(book => book.bookId === revision.replacesBookId ? revision.book : book)
     setLearningBooks(nextBooks)
     setStorageWarning(writeLearningBooks(persistentSizeStorage, nextBooks)
       ? undefined
       : '学习书已在本次使用中创建，但无法保存；关闭后可能丢失。')
-    setNewBookId(book.bookId)
+    setNewBookId(revision.replacesBookId === undefined ? revision.book.bookId : undefined)
     setBookDraft(undefined)
     setHistoryOpen(false)
     setArea('library')
+  }
+
+  async function deleteLearningBook(book: LearningBook): Promise<void> {
+    if (book.courseId !== undefined) await clientApi.deleteLearningCourse(book.courseId)
+    const nextBooks = learningBooks.filter(candidate => candidate.bookId !== book.bookId)
+    setLearningBooks(nextBooks)
+    setStorageWarning(writeLearningBooks(persistentSizeStorage, nextBooks)
+      ? undefined
+      : '学习书已在本次使用中删除，但无法保存；刷新后可能重新出现。')
+    setNewBookId(current => current === book.bookId ? undefined : current)
   }
 
   function enterLearning(book: LearningBook): void {
@@ -350,6 +377,7 @@ export function BetterLearnFloatingApp({
           onClick={() => setHistoryOpen(value => !value)}>历史</button>}
         <strong>{mode === 'learning' ? 'BetterLearn · 学习'
           : area === 'knowledge' ? 'BetterLearn · 知识点'
+          : area === 'compose' && bookDraft?.editingBook ? 'BetterLearn · 修改学习书'
           : area === 'compose' ? 'BetterLearn · 整理学习书'
           : area === 'library' ? 'BetterLearn · 学习空间' : 'BetterLearn'}</strong>
       </div>
@@ -362,11 +390,23 @@ export function BetterLearnFloatingApp({
     {mode === 'workbench' && area === 'library'
       ? <LearningBookshelf books={learningBooks} newBookId={newBookId} storageWarning={storageWarning}
         onOpenBook={enterLearning}
+        onEditBook={editLearningBook}
+        onDeleteBook={deleteLearningBook}
         onOpenKnowledge={() => openArea('knowledge')} />
       : null}
     {mode === 'workbench' && area === 'compose' && bookDraft !== undefined
-      ? <LearningBookComposer points={bookDraft.points} onCreate={finishLearningBook}
-        onCancel={() => { setBookDraft(undefined); openArea('knowledge') }} />
+      ? <LearningBookComposer points={bookDraft.points}
+        initialTitle={bookDraft.editingBook?.title}
+        heading={bookDraft.editingBook ? '修改学习书' : undefined}
+        submitLabel={bookDraft.editingBook
+          ? hasLearningStarted(bookDraft.editingBook) ? '保存为新版本' : '保存修改'
+          : undefined}
+        onCreate={finishLearningBook}
+        onCancel={() => {
+          const editing = bookDraft.editingBook !== undefined
+          setBookDraft(undefined)
+          openArea(editing ? 'library' : 'knowledge')
+        }} />
       : null}
     {mode === 'learning' && activeBook !== undefined
       ? <LearningSpace book={activeBook} api={clientApi}

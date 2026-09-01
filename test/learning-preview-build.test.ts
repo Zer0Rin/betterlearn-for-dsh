@@ -18,6 +18,8 @@ describe('standalone learning preview', () => {
     expect(entry).toContain("from '../src/client/components/LearningLibrary.js'")
     expect(entry).toContain('createLearningBook')
     expect(entry).toContain('LearningBookComposer')
+    expect(entry).toContain('onEditBook')
+    expect(entry).toContain('onDeleteBook')
     expect(entry).toContain("useState<'home' | 'knowledge' | 'compose' | 'library'>('home')")
     expect(html).toContain('<div id="root"></div>')
     expect(buildScript).toContain("outfile: 'dist/learning-preview/app.js'")

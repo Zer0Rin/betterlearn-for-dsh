@@ -6,7 +6,8 @@ import {
 import { LearningSpace } from '../src/client/components/LearningSpace.js'
 import { ResultSummary } from '../src/client/components/ResultSummary.js'
 import {
-  createLearningBook, updateLearningBookCourse, type LearningBook,
+  createLearningBook, hasLearningStarted, reviseLearningBook,
+  updateLearningBookCourse, type LearningBook,
 } from '../src/client/learning-book-library.js'
 import { CLIENT_CSS } from '../src/client/styles.js'
 import type {
@@ -202,6 +203,7 @@ function PreviewApp() {
   const [activeBook, setActiveBook] = useState<LearningBook>()
   const [learningApi, setLearningApi] = useState(() => previewApiFor(initialBook))
   const [draftPoints, setDraftPoints] = useState<KnowledgePointSnapshot[]>()
+  const [draftBook, setDraftBook] = useState<LearningBook>()
   const [newBookId, setNewBookId] = useState<string>()
   const panelStyle = {
     '--betterlearn-user-width': mode === 'learning' ? '1080px' : '460px',
@@ -251,6 +253,15 @@ function PreviewApp() {
           {mode === 'workbench' && area === 'library' ? (
             <LearningBookshelf books={books} newBookId={newBookId}
               onOpenKnowledge={() => setArea('knowledge')}
+              onEditBook={book => {
+                setDraftBook(book)
+                setDraftPoints(book.points)
+                setArea('compose')
+              }}
+              onDeleteBook={async book => {
+                setBooks(current => current.filter(candidate => candidate.bookId !== book.bookId))
+                setNewBookId(current => current === book.bookId ? undefined : current)
+              }}
               onOpenBook={book => {
                 setActiveBook(book)
                 setLearningApi(() => previewApiFor(book))
@@ -259,17 +270,33 @@ function PreviewApp() {
           ) : null}
           {mode === 'workbench' && area === 'compose' && draftPoints ? (
             <LearningBookComposer points={draftPoints}
-              onCancel={() => { setDraftPoints(undefined); setArea('knowledge') }}
-              onCreate={draft => {
-                const book = createLearningBook({
-                  title: draft.title, points: draft.points, sourceText,
-                }, {
-                  bookId: `book-preview-${books.length + 1}`,
-                  createdAt: new Date().toISOString(),
-                })
-                setBooks(current => [book, ...current])
-                setNewBookId(book.bookId)
+              initialTitle={draftBook?.title}
+              heading={draftBook ? '修改学习书' : undefined}
+              submitLabel={draftBook
+                ? hasLearningStarted(draftBook) ? '保存为新版本' : '保存修改'
+                : undefined}
+              onCancel={() => {
                 setDraftPoints(undefined)
+                setDraftBook(undefined)
+                setArea(draftBook ? 'library' : 'knowledge')
+              }}
+              onCreate={draft => {
+                const identity = {
+                  bookId: `book-preview-${Date.now()}`,
+                  createdAt: new Date().toISOString(),
+                }
+                const revision = draftBook
+                  ? reviseLearningBook(draftBook, draft, identity)
+                  : { book: createLearningBook({
+                    title: draft.title, points: draft.points, sourceText,
+                  }, identity) }
+                setBooks(current => revision.replacesBookId === undefined
+                  ? [revision.book, ...current]
+                  : current.map(book => book.bookId === revision.replacesBookId
+                    ? revision.book : book))
+                setNewBookId(revision.replacesBookId === undefined ? revision.book.bookId : undefined)
+                setDraftPoints(undefined)
+                setDraftBook(undefined)
                 setArea('library')
               }} />
           ) : null}
@@ -279,6 +306,7 @@ function PreviewApp() {
                 <ResultSummary run={run} candidates={[]} knowledgePoints={points}
                   onUpdate={async () => true} onReset={() => undefined}
                   onOrganizeLearningBook={nextPoints => {
+                    setDraftBook(undefined)
                     setDraftPoints(nextPoints)
                     setArea('compose')
                   }} />
