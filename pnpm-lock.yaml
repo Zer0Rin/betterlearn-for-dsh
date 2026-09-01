@@ -90,6 +90,12 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: 0.1.0-rc.7
         version: 0.1.0-rc.7(1dcde9bfc9fa0140c66648fbcb67b346)
+      '@deepseek-ai/dsh-session-query':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(fa24861d08a9d735fc78888af6ddf326)
+      '@deepseek-ai/dsh-session-title':
+        specifier: 0.1.0-rc.7
+        version: 0.1.0-rc.7(54a387d0d580a07b8dbef208df0b04c2)
       '@deepseek-ai/dsh-subagent':
         specifier: 0.1.0-rc.7
         version: 0.1.0-rc.7(1661c1db95a9727314565b6a7efe7b03)
