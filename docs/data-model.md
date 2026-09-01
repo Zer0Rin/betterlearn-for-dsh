@@ -230,10 +230,12 @@ CREATE TABLE idempotency_records (
 1. **运行是头等实体**：`runs.document_id` 直接外键到 `documents`，删除 `import_jobs` 投影与 `assert_projection()`。run 状态机、事件账本、attempt 账本完全由 `runs/generation_attempts/run_events` 自洽表达。
 2. **正文内联到 `documents`**：`canonical_text` 直接落库，`text_sha256` 用于请求幂等与内容一致性。P3 引入 PDF/长文档时，再加 `chunks`（文档级 `char_offset`）作为**附加索引**，证据仍用文档级偏移，不改变坐标语义。
 3. **提案与决策分离**：`candidates` 生成后不可变；`candidate_reviews` 记录 `action + final_* + knowledge_point_id`。修复了当前 `edited_and_accept` 覆盖候选标题/陈述、丢失「修改前」的问题。
-4. **候选不再需要 `revision` 乐观并发**：候选不可变 + `candidate_reviews` 以 `candidate_id` 为主键，重复审核由 UNIQUE/状态检查天然拒绝（对应现有 `CANDIDATE_ALREADY_REVIEWED`），比现有 `revision 1→2` 更简单。
-5. **证据坐标统一为文档级**：`candidate_evidence` 与 `knowledge_point_evidence` 都存文档绝对偏移，消灭 v8 `kp_evidence` 的 chunk 相对语义。
-6. **契约与库版本分离命名**：`runs.contract_version/contract_sha256`（原 `schema_version/schema_sha256`）只标识候选输出契约；数据库 schema 版本由 `schema_meta` 单独管理。避免「schema」一词双关。
-7. **`strategy` 取代硬编码 `mode`**：`runs.strategy` 当前固定 `'l1'`，为 P3 的 L2/L3 路由、PDF、分块策略预留扩展位，`retry_count` 上限后续按策略放宽。
+4. **正式知识点可修改**：完成后的 `knowledge_points.title/statement` 可继续编辑；同一事务同步 `candidate_reviews.final_*`、内容哈希、运行计数和 revision，但不覆盖原始候选。当前不保存知识点版本历史。
+5. **任务删除按所有权级联**：删除 run 对应的 document 会级联删除 attempts、candidates、evidence、knowledge points 与 events；删除前先解除 review 对知识点的限制引用，并只清除结果指向该 run 候选的审核幂等记录。当前没有回收站。
+6. **候选不再需要 `revision` 乐观并发**：候选不可变 + `candidate_reviews` 以 `candidate_id` 为主键，重复审核由 UNIQUE/状态检查天然拒绝（对应现有 `CANDIDATE_ALREADY_REVIEWED`），比现有 `revision 1→2` 更简单。
+7. **证据坐标统一为文档级**：`candidate_evidence` 与 `knowledge_point_evidence` 都存文档绝对偏移，消灭 v8 `kp_evidence` 的 chunk 相对语义。
+8. **契约与库版本分离命名**：`runs.contract_version/contract_sha256`（原 `schema_version/schema_sha256`）只标识候选输出契约；数据库 schema 版本由 `schema_meta` 单独管理。避免「schema」一词双关。
+9. **`strategy` 取代硬编码 `mode`**：`runs.strategy` 当前固定 `'l1'`，为 P3 的 L2/L3 路由、PDF、分块策略预留扩展位，`retry_count` 上限后续按策略放宽。
 
 ## 6. 迁移路径与决策点
 

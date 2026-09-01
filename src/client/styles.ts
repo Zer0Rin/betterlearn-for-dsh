@@ -62,9 +62,9 @@ export const CLIENT_CSS = `
 }
 .betterlearn-floating-panel[data-resizing="true"] { transition: none; user-select: none; }
 .betterlearn-resize-handle { position: absolute; z-index: 5; touch-action: none; }
-.betterlearn-resize-handle--left { inset: 12px auto 12px -5px; width: 10px; cursor: ew-resize; }
-.betterlearn-resize-handle--bottom { inset: auto 12px -5px 12px; height: 10px; cursor: ns-resize; }
-.betterlearn-resize-handle--corner { left: -7px; bottom: -7px; width: 18px; height: 18px; cursor: nesw-resize; }
+.betterlearn-resize-handle--left { inset: 12px auto 12px 0; width: 10px; cursor: ew-resize; }
+.betterlearn-resize-handle--bottom { inset: auto 12px 0 12px; height: 10px; cursor: ns-resize; }
+.betterlearn-resize-handle--corner { left: 0; bottom: 0; width: 18px; height: 18px; cursor: nesw-resize; }
 .betterlearn-floating-header {
   display: flex;
   flex: 0 0 auto;

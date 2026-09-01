@@ -55,6 +55,13 @@ export function assertPhase1dBrowserResult(value) {
     fail('CLIENT_REVIEW_FLOW_INCOMPLETE')
   }
   if (value.knowledgePointCount !== 2) fail('CLIENT_RESULT_COUNT_INVALID')
+  if (value.knowledgePointEdited !== true
+    || value.editProviderCalls !== 0
+    || value.deletedFixtureGone !== true
+    || value.existingRunRetained !== true
+    || value.deleteProviderCalls !== 0) {
+    fail('CLIENT_CONTENT_MANAGEMENT_INVALID')
+  }
   if (value.filePreview?.filename !== 'sample.txt'
     || value.filePreview.mediaType !== 'text/plain'
     || value.filePreview.submitted !== false) {
@@ -448,24 +455,39 @@ async function execute(evidenceRoot) {
       narrowImport: join(screenshotRoot, 'narrow-import.png'),
     }
     const corner = page.getByTestId('betterlearn-resize-corner')
-    const cornerBox = await corner.boundingBox()
-    if (cornerBox === null) throw new Error('CLIENT_RESIZE_HANDLE_MISSING')
-    const cornerX = cornerBox.x + cornerBox.width / 2
-    const cornerY = cornerBox.y + cornerBox.height / 2
-    await page.mouse.move(cornerX, cornerY)
-    await page.mouse.down()
-    await page.mouse.move(cornerX - 160, cornerY + 80, { steps: 8 })
-    await page.mouse.up()
-    const resizedResultRect = await resultPanel.evaluate(element => {
-      const rect = element.getBoundingClientRect()
-      return { width: rect.width, height: rect.height }
-    })
+    let resizedResultRect = defaultResultRect
+    for (let attempt = 0; attempt < 2 && resizedResultRect.width <= defaultResultRect.width + 100; attempt += 1) {
+      const cornerBox = await corner.boundingBox()
+      if (cornerBox === null) throw new Error('CLIENT_RESIZE_HANDLE_MISSING')
+      const cornerX = cornerBox.x + cornerBox.width / 2
+      const cornerY = cornerBox.y + cornerBox.height / 2
+      await page.mouse.move(cornerX, cornerY)
+      await page.mouse.down()
+      await page.waitForTimeout(50)
+      await page.mouse.move(cornerX - 160, cornerY + 80, { steps: 12 })
+      await page.mouse.up()
+      await page.waitForTimeout(50)
+      resizedResultRect = await resultPanel.evaluate(element => {
+        const rect = element.getBoundingClientRect()
+        return { width: rect.width, height: rect.height }
+      })
+    }
     await page.screenshot({ path: screenshots.resizedResult, fullPage: true })
 
     await page.reload({ waitUntil: 'domcontentloaded' })
     await openNobeiView(page, manifest.paths.runtimeRoot)
     await waitForScreen(page, 'result')
-    const restoredResultRect = await page.getByTestId('betterlearn-floating-panel').evaluate(element => {
+    const restoredPanel = page.getByTestId('betterlearn-floating-panel')
+    await page.waitForFunction(({ width, height }) => {
+      const element = document.querySelector('[data-testid="betterlearn-floating-panel"]')
+      if (!(element instanceof HTMLElement)) return false
+      return Math.abs(parseFloat(element.style.getPropertyValue('--betterlearn-user-width')) - width) <= 2
+        && Math.abs(parseFloat(element.style.getPropertyValue('--betterlearn-user-height')) - height) <= 2
+    }, { width: resizedResultRect.width - 2, height: resizedResultRect.height - 2 }, { timeout: 10_000 })
+    await restoredPanel.evaluate(async element => {
+      await Promise.all(element.getAnimations().map(animation => animation.finished))
+    })
+    const restoredResultRect = await restoredPanel.evaluate(element => {
       const rect = element.getBoundingClientRect()
       return { width: rect.width, height: rect.height }
     })
@@ -477,6 +499,21 @@ async function execute(evidenceRoot) {
       restoredWidth: restoredResultRect.width,
       restoredHeight: restoredResultRect.height,
     }
+
+    const ledgerBeforeEdit = await ledger(baseUrl, config.ledgerToken)
+    await page.locator('.nobei-client__knowledge-list button[aria-label^="修改“"]').first().click()
+    await page.getByTestId('nobei-point-title-input').fill('验收后可继续编辑的知识点')
+    await page.getByTestId('nobei-point-statement-input').fill('正式知识点在提取完成后仍可由用户修改，并持久保存。')
+    const updateResponse = page.waitForResponse(response => response.request().method() === 'PATCH'
+      && /^\/nobei\/v1\/knowledge-points\/[^/]+$/.test(new URL(response.url()).pathname), { timeout: 30_000 })
+    await page.getByTestId('nobei-point-save').click()
+    if ((await updateResponse).status() !== 200) throw new Error('CLIENT_KNOWLEDGE_POINT_UPDATE_FAILED')
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await openNobeiView(page, manifest.paths.runtimeRoot)
+    await waitForScreen(page, 'result')
+    const knowledgePointEdited = await page.getByText('验收后可继续编辑的知识点', { exact: true }).isVisible()
+    const ledgerAfterEdit = await ledger(baseUrl, config.ledgerToken)
+    const editProviderCalls = ledgerAfterEdit.records.length - ledgerBeforeEdit.records.length
 
     const knowledgePointCount = await page.locator('.nobei-client__knowledge-list article').count()
     await page.getByTestId('nobei-reset').click()
@@ -534,6 +571,18 @@ async function execute(evidenceRoot) {
     const navigationProviderCalls = ledgerAfterNavigation.records.length - ledgerBeforeNavigation.records.length
     await page.screenshot({ path: screenshots.wideResult, fullPage: true })
 
+    const ledgerBeforeDelete = await ledger(baseUrl, config.ledgerToken)
+    const deleteResponse = page.waitForResponse(response => response.request().method() === 'DELETE'
+      && new URL(response.url()).pathname === `/nobei/v1/runs/${secondRunId}`, { timeout: 30_000 })
+    await page.getByTestId(`history-delete-${secondRunId}`).click()
+    await page.getByTestId('history-delete-confirm').click()
+    if ((await deleteResponse).status() !== 200) throw new Error('CLIENT_HISTORY_DELETE_FAILED')
+    await page.locator(`.nobei-history [data-run-id="${secondRunId}"]`).waitFor({ state: 'detached', timeout: 30_000 })
+    const deletedFixtureGone = await page.locator(`.nobei-history [data-run-id="${secondRunId}"]`).count() === 0
+    const existingRunRetained = await page.locator(`.nobei-history [data-run-id="${importedRunId}"]`).count() === 1
+    const ledgerAfterDelete = await ledger(baseUrl, config.ledgerToken)
+    const deleteProviderCalls = ledgerAfterDelete.records.length - ledgerBeforeDelete.records.length
+
     const importsBeforePreview = productRequests.filter((request) => request.method === 'POST'
       && request.path === '/nobei/v1/imports').length
     const narrowPage = await context.newPage()
@@ -551,9 +600,9 @@ async function execute(evidenceRoot) {
       }))
     await narrowPage.getByTestId('betterlearn-history-toggle').click()
     await narrowPage.locator(`.nobei-history [data-run-id="${importedRunId}"]`).waitFor({ state: 'visible', timeout: 30_000 })
-    await narrowPage.locator(`.nobei-history [data-run-id="${secondRunId}"]`).waitFor({ state: 'visible', timeout: 30_000 })
     const globalWithoutSessionStorage = narrowHadNoRunPointer
-      && await narrowPage.locator('.nobei-history [data-run-id]').count() >= 2
+      && await narrowPage.locator('.nobei-history [data-run-id]').count() >= 1
+      && await narrowPage.locator(`.nobei-history [data-run-id="${secondRunId}"]`).count() === 0
     await narrowPage.getByTestId('betterlearn-history-toggle').click()
     await narrowPage.getByRole('button', { name: 'Open sidebar', exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
     await narrowPage.locator('[data-testid="nobei-model-selection"][data-model-status="ready"]')
@@ -600,6 +649,11 @@ async function execute(evidenceRoot) {
       screens,
       reviewActions,
       knowledgePointCount,
+      knowledgePointEdited,
+      editProviderCalls,
+      deletedFixtureGone,
+      existingRunRetained,
+      deleteProviderCalls,
       filePreview,
       sidebarCollapsedForNarrow,
       narrowContentWidth,

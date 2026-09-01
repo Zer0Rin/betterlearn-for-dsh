@@ -39,6 +39,8 @@ describe('phase1d scoped styles', () => {
     expect(CLIENT_CSS).toContain('cursor: ns-resize')
     expect(CLIENT_CSS).toContain('.betterlearn-resize-handle--corner')
     expect(CLIENT_CSS).toContain('cursor: nesw-resize')
+    expect(CLIENT_CSS).toContain('left: 0; bottom: 0; width: 18px; height: 18px')
+    expect(CLIENT_CSS).not.toContain('left: -7px; bottom: -7px')
     expect(CLIENT_CSS).toContain('@container (max-width: 480px)')
     expect(CLIENT_CSS).toContain('@container (max-width: 400px)')
     expect(CLIENT_CSS).toContain('font-size: 14px')
