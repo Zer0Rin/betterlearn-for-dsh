@@ -58,6 +58,15 @@ describe('learning space preview model', () => {
     expect(course.progress).toEqual({ completed: 0, total: 3, mastery: 0 })
   })
 
+  test('accepts an explicit course identity and title for a saved learning book', () => {
+    const course = createLearningPreviewCourse([
+      point('kp_scope', '词法作用域', '变量解析由代码书写位置决定。'),
+    ], sourceText, { courseId: 'book-scope-2', title: '第二本作用域学习书' })
+
+    expect(course.courseId).toBe('book-scope-2')
+    expect(course.title).toBe('第二本作用域学习书')
+  })
+
   test('uses an explicit summary fallback when no exact evidence exists', () => {
     const course = createLearningPreviewCourse([
       point('kp_summary', '正式陈述', '这是用户审核后的知识点。'),

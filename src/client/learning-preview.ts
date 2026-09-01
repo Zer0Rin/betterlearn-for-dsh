@@ -64,6 +64,11 @@ export interface LearningPreviewCourse {
   units: LearningPreviewUnit[]
 }
 
+export interface LearningPreviewCourseOptions {
+  courseId?: string
+  title?: string
+}
+
 function previewEvidence(evidence: EvidenceSpan | undefined): LearningPreviewEvidence {
   if (evidence === undefined) {
     return {
@@ -119,14 +124,15 @@ function previewUnit(point: KnowledgePointSnapshot, index: number): LearningPrev
 export function createLearningPreviewCourse(
   points: KnowledgePointSnapshot[],
   sourceText: string,
+  options: LearningPreviewCourseOptions = {},
 ): LearningPreviewCourse {
   const first = points[0]
-  const title = first === undefined
+  const defaultTitle = first === undefined
     ? '新的学习路径'
     : points.length === 1 ? `${first.title} · 学习路径` : `${first.title}等 ${points.length} 个知识点`
   return {
-    courseId: first === undefined ? 'preview-empty' : `preview-${first.knowledgePointId}`,
-    title,
+    courseId: options.courseId ?? (first === undefined ? 'preview-empty' : `preview-${first.knowledgePointId}`),
+    title: options.title ?? defaultTitle,
     preview: true,
     sourceText,
     progress: { completed: 0, total: points.length, mastery: 0 },
