@@ -1,6 +1,6 @@
 {
   "name": "@nobei/dsh-phase1",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Local knowledge extraction and evidence review plugin for DeepSeek Harness",
   "private": true,
   "license": "MIT",
