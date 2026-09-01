@@ -63,6 +63,7 @@ def _require_sync(params: object) -> tuple[str, str, list[str]]:
     if (
         not isinstance(raw_ids, list)
         or not 1 <= len(raw_ids) <= 100
+        or not all(isinstance(value, str) for value in raw_ids)
         or len(set(raw_ids)) != len(raw_ids)
     ):
         raise CoreProblem("INVALID_PARAMS", "learning knowledge point selection is invalid")
@@ -84,6 +85,8 @@ def _load_point(connection, knowledge_point_id: str) -> dict[str, Any]:
         "FROM knowledge_point_evidence WHERE knowledge_point_id=? ORDER BY seq",
         (knowledge_point_id,),
     ).fetchall()]
+    if not point["evidence"]:
+        raise CoreProblem("EVIDENCE_NOT_FOUND", "selected knowledge point has no evidence quote")
     return point
 
 
@@ -138,11 +141,9 @@ def _assessment_options(
 
 def _insert_assessments(connection, unit: dict[str, Any], units: list[dict[str, Any]], index: int, created_at: str) -> None:
     evidence = unit["evidence"]
-    evidence_label = (
-        str(evidence[0]["quote"])
-        if evidence
-        else f"已确认陈述：{unit['statement']}"
-    )
+    if not evidence:
+        raise CoreProblem("EVIDENCE_NOT_FOUND", "learning unit has no evidence quote")
+    evidence_label = str(evidence[0]["quote"])
     remediation_title = f"重新核对“{unit['title']}”"
     remediation_body = (
         f"先读已确认结论：“{unit['statement']}”再回到原文：“{evidence_label}”。"

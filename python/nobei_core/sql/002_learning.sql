@@ -69,4 +69,3 @@ CREATE INDEX idx_learning_mastery_due ON learning_mastery_states(status, due_at)
 UPDATE schema_meta
 SET version=2, applied_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
 WHERE id=1 AND version=1;
-

@@ -5,9 +5,13 @@ import {
 } from '../src/client/components/LearningLibrary.js'
 import { LearningSpace } from '../src/client/components/LearningSpace.js'
 import { ResultSummary } from '../src/client/components/ResultSummary.js'
-import { createLearningBook } from '../src/client/learning-book-library.js'
+import {
+  createLearningBook, updateLearningBookCourse, type LearningBook,
+} from '../src/client/learning-book-library.js'
 import { CLIENT_CSS } from '../src/client/styles.js'
-import type { KnowledgePointSnapshot, RunSnapshot } from '../src/client/types.js'
+import type {
+  ClientApi, KnowledgePointSnapshot, LearningCourse, RunSnapshot,
+} from '../src/client/types.js'
 
 const sourceText = [
   '工作记忆一次能主动处理的信息有限，所以复杂内容需要拆成边界清晰的小单元。',
@@ -82,7 +86,99 @@ const run: RunSnapshot = {
 
 const initialBook = createLearningBook({
   title: '有效学习方法', points, sourceText,
-}, { bookId: 'preview-book-1', createdAt: '2026-09-01T08:00:00.000Z' })
+}, { bookId: 'book-preview-1', createdAt: '2026-09-01T08:00:00.000Z' })
+
+function buildPreviewCourse(book: LearningBook): LearningCourse {
+  const units = book.points.map((item, index) => {
+    const other = book.points[(index + 1) % book.points.length]
+    const evidence = item.evidence[0]!
+    const distinctOther = other?.knowledgePointId === item.knowledgePointId ? undefined : other
+    const otherEvidence = distinctOther?.evidence[0]
+    return {
+      unitId: `unit-preview-${index + 1}`,
+      knowledgePointId: item.knowledgePointId,
+      type: item.type,
+      title: item.title,
+      objective: `能够准确解释${item.title}，并从原文中定位支持证据。`,
+      lesson: {
+        explanation: item.statement,
+        workedExample: `原文写道：“${evidence.quote}”。把这段原文与结论逐项对应。`,
+        supplemental: '先辨认结论描述的对象和关系，再核对对应原文。',
+      },
+      evidence: { kind: 'quote' as const, ...evidence },
+      mastery: { status: 'new' as const, strength: 0, dueAt: null },
+      check: {
+        main: {
+          assessmentId: `asm-preview-${index + 1}-main`, kind: 'claim_choice' as const,
+          prompt: `以下哪一项准确说明“${item.title}”？`,
+          options: [
+            { optionId: `opt-preview-${index + 1}-main-correct`, label: item.statement },
+            { optionId: `opt-preview-${index + 1}-main-other`, label: distinctOther?.statement
+              ?? `“${item.title}”只是材料中的一个标题。` },
+          ],
+          attempt: null,
+        },
+        remediation: {
+          title: `重新核对“${item.title}”`,
+          body: `先读已确认结论：“${item.statement}”再回到原文：“${evidence.quote}”。`,
+        },
+        retest: {
+          assessmentId: `asm-preview-${index + 1}-retest`, kind: 'evidence_choice' as const,
+          prompt: `以下哪段原文最直接支持：${item.statement}`,
+          options: [
+            { optionId: `opt-preview-${index + 1}-retest-correct`, label: evidence.quote },
+            { optionId: `opt-preview-${index + 1}-retest-other`, label: otherEvidence?.quote
+              ?? '材料中的其他段落不能直接支持这个结论。' },
+          ],
+          attempt: null,
+        },
+      },
+    }
+  })
+  return {
+    courseId: `course-${book.bookId}`, clientBookId: book.bookId, title: book.title,
+    status: 'active', progress: { completed: 0, total: units.length, mastery: 0 }, units,
+  }
+}
+
+function previewApiFor(book: LearningBook): Pick<ClientApi, 'syncLearningCourse' | 'submitLearningAttempt'> {
+  let course = buildPreviewCourse(book)
+  return {
+    syncLearningCourse: async () => structuredClone(course),
+    submitLearningAttempt: async (assessmentId, input) => {
+      const next = structuredClone(course)
+      const unit = next.units.find(item => item.check.main.assessmentId === assessmentId
+        || item.check.retest.assessmentId === assessmentId)
+      if (!unit) throw new Error('preview assessment missing')
+      const assessment = unit.check.main.assessmentId === assessmentId
+        ? unit.check.main : unit.check.retest
+      const correct = input.optionId.endsWith('-correct')
+      const submittedAt = new Date().toISOString()
+      assessment.attempt = { selectedOptionId: input.optionId, correct, submittedAt }
+      if (assessment.kind === 'claim_choice') {
+        unit.mastery = correct
+          ? { status: 'mastered', strength: 100, dueAt: new Date(Date.now() + 3 * 86_400_000).toISOString() }
+          : { status: 'remediation_required', strength: 20, dueAt: null }
+      } else {
+        unit.mastery = correct
+          ? { status: 'mastered_after_remediation', strength: 70, dueAt: new Date(Date.now() + 86_400_000).toISOString() }
+          : { status: 'learning', strength: 20, dueAt: null }
+      }
+      next.progress.completed = next.units.filter(item => item.mastery.status === 'mastered'
+        || item.mastery.status === 'mastered_after_remediation').length
+      next.progress.mastery = next.units.length === 0 ? 0
+        : Math.round(next.units.reduce((total, item) => total + item.mastery.strength, 0) / next.units.length)
+      course = next
+      return {
+        attempt: {
+          attemptId: `latt-preview-${Date.now()}`, assessmentId,
+          selectedOptionId: input.optionId, correct, submittedAt,
+        },
+        course: structuredClone(course),
+      }
+    },
+  }
+}
 
 const PREVIEW_CSS = `
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
@@ -103,7 +199,8 @@ function PreviewApp() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [books, setBooks] = useState([initialBook])
-  const [course, setCourse] = useState(initialBook.course)
+  const [activeBook, setActiveBook] = useState<LearningBook>()
+  const [learningApi, setLearningApi] = useState(() => previewApiFor(initialBook))
   const [draftPoints, setDraftPoints] = useState<KnowledgePointSnapshot[]>()
   const [newBookId, setNewBookId] = useState<string>()
   const panelStyle = {
@@ -139,10 +236,12 @@ function PreviewApp() {
             </div>
             <button type="button" aria-label="收起 BetterLearn" onClick={() => setExpanded(false)}>收起</button>
           </header>
-          {mode === 'learning' && course ? (
-            <LearningSpace course={course} sourceText={course.sourceText}
+          {mode === 'learning' && activeBook ? (
+            <LearningSpace book={activeBook} api={learningApi}
               leftOpen={leftOpen} rightOpen={rightOpen}
               onLeftOpenChange={setLeftOpen} onRightOpenChange={setRightOpen}
+              onCourseChange={next => setBooks(current => current.map(book =>
+                book.bookId === next.clientBookId ? updateLearningBookCourse(book, next) : book))}
               onExit={() => { setMode('workbench'); setArea('library') }} />
           ) : null}
           {mode === 'workbench' && area === 'home' ? (
@@ -153,7 +252,8 @@ function PreviewApp() {
             <LearningBookshelf books={books} newBookId={newBookId}
               onOpenKnowledge={() => setArea('knowledge')}
               onOpenBook={book => {
-                setCourse(book.course)
+                setActiveBook(book)
+                setLearningApi(() => previewApiFor(book))
                 setMode('learning')
               }} />
           ) : null}
@@ -164,7 +264,7 @@ function PreviewApp() {
                 const book = createLearningBook({
                   title: draft.title, points: draft.points, sourceText,
                 }, {
-                  bookId: `preview-book-${books.length + 1}`,
+                  bookId: `book-preview-${books.length + 1}`,
                   createdAt: new Date().toISOString(),
                 })
                 setBooks(current => [book, ...current])

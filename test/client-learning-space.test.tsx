@@ -194,6 +194,44 @@ describe('Core-backed learning space', () => {
     }
   })
 
+  test('reuses the same idempotency key after a lost response and blocks double submission', async () => {
+    let rejectFirst!: (error: Error) => void
+    let callCount = 0
+    const submitLearningAttempt = vi.fn((assessmentId: string, input: { optionId: string }) => {
+      callCount += 1
+      if (callCount === 1) {
+        return new Promise<never>((_resolve, reject) => { rejectFirst = reject })
+      }
+      return Promise.resolve({
+        attempt: {
+          attemptId: 'latt_' + 'a'.repeat(20), assessmentId,
+          selectedOptionId: input.optionId, correct: false, submittedAt: '2026-09-01T10:01:00Z',
+        },
+        course: failedCourse(),
+      })
+    })
+    const recoveryApi = {
+      syncLearningCourse: vi.fn(async () => cloneCourse()),
+      submitLearningAttempt,
+    }
+    const { renderer } = await renderLearning({ api: recoveryApi })
+
+    act(() => renderer.root.findByProps({ 'data-option-id': 'opt_' + '2'.repeat(20) }).props.onClick())
+    const submit = renderer.root.findByProps({ 'data-testid': 'learning-submit-check' }).props.onClick
+    act(() => {
+      submit()
+      submit()
+    })
+    expect(submitLearningAttempt).toHaveBeenCalledTimes(1)
+    const firstKey = submitLearningAttempt.mock.calls[0]![1].idempotencyKey
+
+    await act(async () => rejectFirst(new Error('response lost')))
+    await act(async () => renderer.root.findByProps({ 'data-testid': 'learning-submit-check' }).props.onClick())
+
+    expect(submitLearningAttempt).toHaveBeenCalledTimes(2)
+    expect(submitLearningAttempt.mock.calls[1]![1].idempotencyKey).toBe(firstKey)
+  })
+
   test('shows a retryable load failure instead of a fake lesson', async () => {
     const brokenApi = {
       syncLearningCourse: vi.fn(async () => { throw new Error('offline') }),

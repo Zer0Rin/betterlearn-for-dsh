@@ -413,6 +413,7 @@ describe('BetterLearn floating workbench shell', () => {
     expect(panel.props['data-mode']).toBe('workbench')
     expect(panel.props['data-area']).toBe('library')
     expect(renderer.root.findByProps({ 'data-testid': 'learning-bookshelf' })).toBeDefined()
+    expect(JSON.stringify(renderer.toJSON())).toContain('已完成 0/1 · 掌握度 0%')
     expect(panel.props.style).toMatchObject({
       '--betterlearn-user-width': '460px', '--betterlearn-user-height': '720px',
     })

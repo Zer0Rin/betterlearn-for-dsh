@@ -133,6 +133,41 @@ def test_course_sync_is_idempotent_and_rejects_changed_frozen_input(database):
         )
 
 
+@pytest.mark.parametrize(
+    "invalid_ids",
+    ([{}], [[]], [True], ["kp_" + "1" * 20, {}]),
+)
+def test_course_sync_rejects_non_string_point_ids_as_invalid_params(database, invalid_ids):
+    core = _core(database)
+
+    with pytest.raises(CoreProblem) as caught:
+        core.sync_learning_course(
+            {
+                "clientBookId": "book-invalid-selection",
+                "title": "无效学习书",
+                "knowledgePointIds": invalid_ids,
+            }
+        )
+
+    assert caught.value.code == "INVALID_PARAMS"
+
+
+def test_course_sync_rejects_a_point_without_a_real_evidence_quote(database):
+    core = _core(database)
+    point_ids = _seed_points(database)
+    with database.write_transaction() as con:
+        con.execute(
+            "DELETE FROM knowledge_point_evidence WHERE knowledge_point_id=?",
+            (point_ids[0],),
+        )
+
+    with pytest.raises(CoreProblem) as caught:
+        _sync(core, point_ids)
+
+    assert caught.value.code == "EVIDENCE_NOT_FOUND"
+    assert database.scalar("SELECT COUNT(*) FROM learning_courses") == 0
+
+
 def test_real_attempt_drives_remediation_retest_mastery_and_is_idempotent(database):
     core = _core(database)
     point_ids = _seed_points(database)

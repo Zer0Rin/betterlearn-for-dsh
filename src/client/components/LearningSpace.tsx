@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LearningBook } from '../learning-book-library.js'
 import type {
   ClientApi, LearningAssessment, LearningCourse, LearningOption, LearningUnit,
@@ -235,6 +235,8 @@ export function LearningSpace({
   const [selected, setSelected] = useState<Record<string, string>>({})
   const [submittingId, setSubmittingId] = useState<string>()
   const [operationError, setOperationError] = useState<string>()
+  const submissionLock = useRef<string>()
+  const retryKeys = useRef(new Map<string, { optionId: string; key: string }>())
 
   useEffect(() => {
     const controller = new AbortController()
@@ -263,19 +265,25 @@ export function LearningSpace({
 
   const submit = async (assessment: LearningAssessment) => {
     const optionId = selected[assessment.assessmentId] ?? assessment.attempt?.selectedOptionId
-    if (optionId === undefined || submittingId !== undefined) return
+    if (optionId === undefined || submissionLock.current !== undefined) return
+    const previous = retryKeys.current.get(assessment.assessmentId)
+    const key = previous?.optionId === optionId ? previous.key : idempotencyKey()
+    retryKeys.current.set(assessment.assessmentId, { optionId, key })
+    submissionLock.current = assessment.assessmentId
     setSubmittingId(assessment.assessmentId)
     setOperationError(undefined)
     try {
       const result = await api.submitLearningAttempt(assessment.assessmentId, {
         optionId,
-        idempotencyKey: idempotencyKey(),
+        idempotencyKey: key,
       })
+      retryKeys.current.delete(assessment.assessmentId)
       setCourse(result.course)
       onCourseChange(result.course)
     } catch {
       setOperationError('答案没有保存成功，请重新提交。')
     } finally {
+      if (submissionLock.current === assessment.assessmentId) submissionLock.current = undefined
       setSubmittingId(undefined)
     }
   }

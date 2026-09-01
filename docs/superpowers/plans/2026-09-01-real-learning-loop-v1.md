@@ -99,4 +99,3 @@
 4. Restart the actual app on `127.0.0.1:3000`.
 5. Use the real existing NIST learning book to answer one main question incorrectly, read remediation, pass the evidence retest, reload, and verify persisted progress.
 6. Commit the implementation only after all evidence is green.
-
