@@ -23,7 +23,18 @@ function fail(code) {
 
 export function assertPhase1dBrowserResult(value) {
   if (value?.clientEntry?.visible !== true
-    || !['dock', 'tab'].includes(value.clientEntry.surface)) fail('CLIENT_ENTRY_NOT_FOUND')
+    || value.clientEntry.surface !== 'floating') fail('CLIENT_ENTRY_NOT_FOUND')
+  const entry = value.clientEntry
+  if (entry.collapsedOnLoad !== true
+    || !Number.isFinite(entry.hostWidthBefore)
+    || !Number.isFinite(entry.hostWidthAfter)
+    || Math.abs(entry.hostWidthBefore - entry.hostWidthAfter) > 1
+    || !Number.isFinite(entry.reviewWidth)
+    || !Number.isFinite(entry.resultWidth)
+    || entry.reviewWidth <= entry.resultWidth
+    || entry.resultWidth <= 0) {
+    fail('CLIENT_FLOATING_LAYOUT_INVALID')
+  }
   if (value.clientModule?.status !== 200
     || value.clientModule.path !== '/plugins/@nobei/dsh-phase1/client.js') {
     fail('CLIENT_MODULE_REQUEST_FAILED')
@@ -138,11 +149,6 @@ export async function openNobeiView(page, runtimeRoot) {
     await notice.waitFor({ state: 'hidden', timeout: 30_000 })
   }
 
-  const view = page.getByTestId('nobei-client-view')
-  const dockAlreadyVisible = await view.waitFor({ state: 'visible', timeout: 1_000 })
-    .then(() => true, () => false)
-  if (dockAlreadyVisible) return { activationStarted: false, surface: 'dock' }
-
   const composer = page.locator([
     'textarea[placeholder="Describe what you want to build"]',
     'textarea[placeholder="Message the agent"]',
@@ -167,32 +173,34 @@ export async function openNobeiView(page, runtimeRoot) {
     await picker.waitFor({ state: 'hidden', timeout: 30_000 })
   }
 
-  const dockVisibleAfterWorkspace = await view.waitFor({ state: 'visible', timeout: 1_000 })
-    .then(() => true, () => false)
-  if (dockVisibleAfterWorkspace) return { activationStarted: false, surface: 'dock' }
-
-  const tab = page.getByRole('tab', { name: 'Nobei', exact: true })
-  const tabAlreadyVisible = await tab.waitFor({ state: 'visible', timeout: 1_000 })
-    .then(() => true, () => false)
-  if (!tabAlreadyVisible) {
-    await composer.waitFor({ state: 'visible', timeout: 30_000 })
-    await composer.fill('Phase 1D WebUI activation. No product data.')
-    await page.getByRole('button', { name: 'Send message', exact: true }).click()
-  }
+  const launcher = page.getByTestId('betterlearn-launcher')
+  const panel = page.getByTestId('betterlearn-floating-panel')
+  const view = page.getByTestId('nobei-client-view')
+  const host = page.locator('[data-conversation-scroll]').first()
   try {
-    await tab.waitFor({ state: 'visible', timeout: 30_000 })
+    await launcher.waitFor({ state: 'visible', timeout: 30_000 })
+    await host.waitFor({ state: 'visible', timeout: 30_000 })
   } catch (error) {
     const diagnostic = await page.evaluate(() => ({
       url: window.location.href,
       bodyText: document.body.innerText.slice(0, 8_000),
       buttons: [...document.querySelectorAll('button')].map((node) => node.textContent?.trim()).filter(Boolean).slice(0, 50),
-      tabs: [...document.querySelectorAll('[role="tab"]')].map((node) => node.textContent?.trim()).filter(Boolean),
+      testIds: [...document.querySelectorAll('[data-testid]')].map((node) => node.getAttribute('data-testid')).filter(Boolean).slice(0, 80),
     }))
-    throw new Error(`NOBEI_TAB_NOT_VISIBLE:${JSON.stringify(diagnostic)}`, { cause: error })
+    throw new Error(`BETTERLEARN_LAUNCHER_NOT_VISIBLE:${JSON.stringify(diagnostic)}`, { cause: error })
   }
-  await tab.click()
+  const collapsedOnLoad = await launcher.getAttribute('aria-expanded') === 'false'
+  const hostWidthBefore = await host.evaluate(element => element.getBoundingClientRect().width)
+  await launcher.click()
+  await panel.waitFor({ state: 'visible', timeout: 30_000 })
   await view.waitFor({ state: 'visible', timeout: 30_000 })
-  return { activationStarted: !tabAlreadyVisible, surface: 'tab' }
+  const hostWidthAfter = await host.evaluate(element => element.getBoundingClientRect().width)
+  return { activationStarted: false, surface: 'floating', collapsedOnLoad, hostWidthBefore, hostWidthAfter }
+}
+
+async function floatingPanelWidth(page) {
+  return page.getByTestId('betterlearn-floating-panel')
+    .evaluate(element => element.getBoundingClientRect().width)
 }
 
 async function waitForScreen(page, expected, timeout = 30_000) {
@@ -363,6 +371,7 @@ async function execute(evidenceRoot) {
       const failureLedger = await ledger(baseUrl, config.ledgerToken).catch(() => undefined)
       throw new Error(`CLIENT_REVIEW_NOT_REACHED:${JSON.stringify({ failureLedger, browserEvents: browserEvents.slice(-20) })}`, { cause: error })
     }
+    const reviewWidth = await floatingPanelWidth(page)
     if (restoredRunId !== importedRunId) throw new Error('CLIENT_RUN_NOT_RESTORED')
 
     const reviewActions = []
@@ -389,6 +398,7 @@ async function execute(evidenceRoot) {
     if ((await reviewResponse).status() !== 200) throw new Error('CLIENT_REJECT_FAILED')
     reviewActions.push('reject')
     screens.push(await waitForScreen(page, 'result'))
+    const resultWidth = await floatingPanelWidth(page)
 
     const knowledgePointCount = await page.locator('.nobei-client__knowledge-list article').count()
     const screenshotRoot = join(evidenceRoot, 'screenshots')
@@ -440,7 +450,7 @@ async function execute(evidenceRoot) {
       records: rawFakeLedger.records.slice(ledgerBeforeImport.records.length),
     }
     const result = {
-      clientEntry: { surface: initialEntry.surface, visible: true },
+      clientEntry: { ...initialEntry, visible: true, reviewWidth, resultWidth },
       clientModule,
       pageOrigin,
       baseUrl: baseOrigin,

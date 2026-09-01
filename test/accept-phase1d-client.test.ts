@@ -3,7 +3,10 @@ import { assertPhase1dBrowserResult, waitForProductReady } from '../scripts/acce
 
 function passingResult() {
   return {
-    clientEntry: { surface: 'dock', visible: true },
+    clientEntry: {
+      surface: 'floating', visible: true, collapsedOnLoad: true,
+      hostWidthBefore: 900, hostWidthAfter: 900, reviewWidth: 1080, resultWidth: 600,
+    },
     clientModule: {
       url: 'http://127.0.0.1:43123/plugins/@nobei/dsh-phase1/client.js',
       status: 200,
@@ -81,6 +84,9 @@ describe('Phase 1D browser acceptance result', () => {
   test.each([
     ['missing client entry', (value: ReturnType<typeof passingResult>) => { value.clientEntry.visible = false }, 'CLIENT_ENTRY_NOT_FOUND'],
     ['unknown client surface', (value: ReturnType<typeof passingResult>) => { value.clientEntry.surface = 'electron' }, 'CLIENT_ENTRY_NOT_FOUND'],
+    ['expanded on load', (value: ReturnType<typeof passingResult>) => { value.clientEntry.collapsedOnLoad = false }, 'CLIENT_FLOATING_LAYOUT_INVALID'],
+    ['squeezed host', (value: ReturnType<typeof passingResult>) => { value.clientEntry.hostWidthAfter = 700 }, 'CLIENT_FLOATING_LAYOUT_INVALID'],
+    ['review not expanded', (value: ReturnType<typeof passingResult>) => { value.clientEntry.reviewWidth = 500 }, 'CLIENT_FLOATING_LAYOUT_INVALID'],
     ['cross-origin page', (value: ReturnType<typeof passingResult>) => { value.pageOrigin = 'http://127.0.0.1:9' }, 'CLIENT_ORIGIN_MISMATCH'],
     ['different restored run', (value: ReturnType<typeof passingResult>) => { value.restoredRunId = 'run_other' }, 'CLIENT_RUN_NOT_RESTORED'],
     ['wrong model selection', (value: ReturnType<typeof passingResult>) => { value.modelSelection.model = 'other' }, 'CLIENT_MODEL_SELECTION_INVALID'],

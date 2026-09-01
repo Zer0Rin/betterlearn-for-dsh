@@ -4,20 +4,30 @@
 
 BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-web-app` 与 BetterLearn HTTP 路由由同一个 `ctx.webServer` 提供，用户界面运行在浏览器中。
 
-客户端通过 `dsh.client.platform: web` 加载，并注入 `conversation.view`。Electron 不是插件侧的另一套实现目标。
+客户端通过 `dsh.client.platform: web` 加载，入口直接在 `document.body` 创建独立 React root。Electron 不是插件侧的另一套实现目标。
 
-`conversation.view`是列表槽；BetterLearn注册`id: nobei`的独立标签页，`order: 50`只控制排序。空会话通过`conversation.input.dock`提供导入入口。选择完整视图是为了容纳导入、原文证据与逐条审核，不是向聊天事件流新增业务行，也不覆盖其他标签。当前共存边界来自bundle patch对专用profile的宿主设置覆盖，详见[安装说明](install.md#专用-profile-的能力范围)；尚未承诺在日常编码profile中与任意其他bundle共用。
+BetterLearn 不再注册 `conversation.view` 或 `conversation.input.dock`，因此不会挤压 DSH 对话区。屏幕右侧的“BetterLearn”按钮每次加载默认收起；展开后是 fixed 浮动工作台，没有遮罩和焦点锁，用户仍可操作 DSH 本体。浮窗跟随 DSH 当前会话恢复对应任务：导入、处理中和结果保持小窗，审核阶段扩大以同时容纳候选目录、原文证据和操作区。首轮宽度档位是功能基线，后续按视觉验收反馈微调；窄屏使用全屏浮层。
+
+```text
+document.body
+├─ DSH WebUI
+└─ BetterLearn Floating Root
+   ├─ Collapsed Launcher
+   └─ Expanded Workbench
+```
+
+当前共存边界仍来自 bundle patch 对专用 profile 的宿主设置覆盖，详见[安装说明](install.md#专用-profile-的能力范围)；尚未承诺在日常编码 profile 中与任意其他 bundle 共用。
 
 ## 2. 组件职责
 
 ### Client
 
 - 预览文本/PDF及实际提取计划、调用上限，显示任务状态和候选审核界面；
-- 从 DSH model directory 读取当前会话的模型选择；
+- 订阅 DSH 当前会话与 model directory，随会话切换恢复对应任务和模型选择；
 - 只在创建新任务时提交模型选择，不自行保存 DSH 设置；
 - 不持有业务数据库。
 
-模型目录服务只在槽位的`inject`组装处使用：`hooks.modelDirectory`由DSH转换为`useModelDirectory`，组件接收快照及加载/读取回调，不直接订阅服务。菜单切换即时更新新任务的模型显示；点击提取时通过回调读取最新快照，避免尚未重绘时提交旧选择。任务恢复与轮询仍只跟随会话/任务，目录更新不重新生成已有任务。
+浮窗入口直接订阅 DSH 的 `sessions.list` 与 model directory：当前会话变化时切换 BetterLearn 工作区，菜单切换即时更新新任务的模型显示；点击提取时读取最新快照，避免尚未重绘时提交旧选择。任务恢复与轮询仍只跟随会话/任务，目录更新不重新生成已有任务。
 
 ### Host
 

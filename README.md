@@ -57,7 +57,7 @@ node "$BETTERLEARN_CLI" start \
 ## 第一次使用
 
 1. 在 DSH WebUI 中选择可用的 provider、model 和 reasoning effort。
-2. 打开空会话中的 BetterLearn 导入入口，选择文件或粘贴原文。
+2. 点击屏幕右侧默认收起的“BetterLearn”按钮，在浮动小窗中选择文件或粘贴原文。
 3. 检查提取策略和最大模型调用次数，点击“开始提取”。
 4. 等待候选生成和证据校验完成。长文会串行执行多个批次。
 5. 在审核页核对高亮原文，选择“接受”“修改后接受”或“拒绝”。
@@ -70,7 +70,7 @@ node "$BETTERLEARN_CLI" start \
 满足下面这些结果，说明最小闭环已经正常工作：
 
 - `install` 输出 `Installed BetterLearn`，`start` 能启动专用 DSH WebUI；
-- 空会话中可以进入 BetterLearn 页面，并能导入或粘贴原文；
+- 右侧 BetterLearn 按钮默认收起，点击后能在不挤压 DSH 对话区的浮动小窗中导入或粘贴原文；
 - 预览页显示提取策略和调用上限，且预览本身不调用模型；
 - 点击“开始提取”后，进度最终进入“等待审核”；
 - 候选的引用可以在原文中逐字高亮；
@@ -101,8 +101,9 @@ node "$BETTERLEARN_CLI" start \
 
 ```text
 DSH CLI
-  └─ DSH WebUI（conversation.view）
-       └─ BetterLearn Client
+  └─ DSH WebUI
+       ├─ DSH 对话界面
+       └─ document.body → BetterLearn 浮动 Client
             └─ /nobei/v1/*
                  └─ BetterLearn Host
                       └─ stdio JSON-RPC
@@ -110,7 +111,7 @@ DSH CLI
                                 └─ 独立 SQLite
 ```
 
-Host 位于 `src/product`，注入 DSH 的 agents、llm、subprocess、tools、webServer 和 workflowEngine；Web 客户端位于 `src/client`，注册 `conversation.view`；Python Core 位于 `python/nobei_core`，通过 stdio JSON-RPC 常驻运行。
+Host 位于 `src/product`，注入 DSH 的 agents、llm、subprocess、tools、webServer 和 workflowEngine；Web 客户端位于 `src/client`，直接挂载到 `document.body`，以右侧按钮控制独立浮窗；Python Core 位于 `python/nobei_core`，通过 stdio JSON-RPC 常驻运行。
 
 详细边界见 [架构说明](docs/architecture.md)，当前验证范围见 [验证说明](docs/validation.md)，后续工作见 [路线图](docs/roadmap.md)。
 
@@ -175,7 +176,7 @@ L1每次提取最多1次模型调用；L2/L3包含规划和分批提取，界面
 ## Known Limitations and Deferred Work
 
 - 当前只支持单机单用户macOS/Linux上的DSH Web插件，安装需维护CLI完成Python与数据目录初始化；预构建tarball是当前交付渠道，不承诺npm包名或Git源码直接安装。公开仓库采用MIT许可证，但源码公开不改变已经验收的安装路径。
-- `conversation.view`注册的是独立标签页，不覆盖其他视图；但随包的patch会修改专用profile中的工具、重试和workflow设置。不要把它直接叠加到日常编码profile；具体影响见 [专用profile限制](docs/install.md#专用-profile-的能力范围)。
+- BetterLearn 浮窗不占用 DSH 的标签页或对话布局；但随包的patch会修改专用profile中的工具、重试和workflow设置。不要把它直接叠加到日常编码profile；具体影响见 [专用profile限制](docs/install.md#专用-profile-的能力范围)。
 - PDF只支持文字层，无OCR；证据定位针对保存的规范化正文，不保证原PDF版面坐标。正文上限512KiB、PDF文件上限5MiB；不保存原PDF。
 - 每次提取调用最多20条候选，长文按多批汇总；精确quote匹配不等于知识点语义正确或覆盖完整，仍需人工审核。fake验收和有限真实试用不代表任意模型、任意材料的质量保证，已验证范围见 [验证说明](docs/validation.md)。
 - 配置由维护CLI提供，Host导出Schemastery `Config`供Cordis加载与更新时校验。Python路径、数据目录与ownership token均属于本机安装，保持必填，不生成通用默认值。客户端通过`inject.hooks`订阅模型目录；尚未提供插件设置卡片。
