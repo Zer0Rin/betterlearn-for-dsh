@@ -50,6 +50,7 @@ RPC_METHODS = MappingProxyType(
         "candidates.list": "list_candidates",
         "candidates.review": "review_candidate",
         "knowledge_points.list_for_run": "list_knowledge_points",
+        "knowledge_points.update": "update_knowledge_point",
     }
 )
 

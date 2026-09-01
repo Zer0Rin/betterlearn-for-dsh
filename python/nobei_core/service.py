@@ -54,9 +54,11 @@ from nobei_core.repository import (
     read_run_events,
     read_run_history,
     read_run_knowledge_points,
+    reclassify_review_after_point_edit,
     request_retry,
     require_candidate,
     require_current_attempt,
+    require_knowledge_point_for_update,
     require_run,
     run_last_event_seq,
     run_snapshot_counts,
@@ -64,6 +66,7 @@ from nobei_core.repository import (
     store_idempotency_result,
     transition_run,
     update_generation_statistics,
+    update_formal_knowledge_point,
     update_run_after_review,
 )
 
@@ -1099,6 +1102,71 @@ class Phase1Core:
                 candidate_type=r['type'],title=r['title'],statement=r['statement'],document_id=r['document_id'],
                 evidence=_public_evidence(knowledge_point_evidence(con, r['id'])))
                 for r in read_run_knowledge_points(con, run_id)]}
+
+    def update_knowledge_point(self, params: object) -> dict[str, object]:
+        command = _require_params(
+            params, frozenset({"knowledgePointId", "title", "statement"})
+        )
+        knowledge_point_id = require_opaque_id(
+            command["knowledgePointId"], "kp"
+        )
+        title = _require_review_text(
+            command["title"], maximum=CANDIDATE_TITLE_MAX_CHARS
+        )
+        statement = _require_review_text(
+            command["statement"], maximum=CANDIDATE_STATEMENT_MAX_CHARS
+        )
+        with _transactional_write(
+            self._database, "knowledge point update failed"
+        ) as con:
+            point = require_knowledge_point_for_update(con, knowledge_point_id)
+            run = require_run(con, point["run_id"])
+            if run["status"] != "completed":
+                raise CoreProblem("RUN_STATE_CONFLICT", "run is not completed")
+            evidence = knowledge_point_evidence(con, knowledge_point_id)
+            public_evidence = _public_evidence(evidence)
+            content_hash = _formal_content_hash(
+                candidate_type=str(point["type"]),
+                title=title,
+                statement=statement,
+                document_id=str(point["document_id"]),
+                evidence=public_evidence,
+            )
+            edited_at = now_iso()
+            update_formal_knowledge_point(
+                con,
+                knowledge_point_id=knowledge_point_id,
+                title=title,
+                statement=statement,
+                content_hash=content_hash,
+                updated_at=edited_at,
+            )
+            first_edit = reclassify_review_after_point_edit(
+                con,
+                candidate_id=str(point["candidate_id"]),
+                title=title,
+                statement=statement,
+                edited_at=edited_at,
+            )
+            changed = con.execute(
+                "UPDATE runs SET edited_candidate_count=edited_candidate_count+?,"
+                "revision=revision+1,updated_at=? WHERE id=? AND status='completed'",
+                (int(first_edit), edited_at, point["run_id"]),
+            ).rowcount
+            if changed != 1:
+                raise CoreProblem("RUN_STATE_CONFLICT", "run is not completed")
+            updated_run = require_run(con, str(point["run_id"]))
+            return {
+                "knowledgePoint": _review_knowledge_point_snapshot(
+                    knowledge_point_id=knowledge_point_id,
+                    candidate_type=str(point["type"]),
+                    title=title,
+                    statement=statement,
+                    document_id=str(point["document_id"]),
+                    evidence=public_evidence,
+                ),
+                "run": _run_snapshot(con, updated_run, self._contract),
+            }
 
 
 def _create_import_in_transaction(con, contract, *, filename, media_type, canonical, encoded):

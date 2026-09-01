@@ -681,6 +681,61 @@ def knowledge_point_evidence(con, knowledge_point_id):
     return [dict(r) for r in con.execute('SELECT * FROM knowledge_point_evidence WHERE knowledge_point_id=? ORDER BY seq', (knowledge_point_id,))]
 
 
+def require_knowledge_point_for_update(
+    con: sqlite3.Connection, knowledge_point_id: str
+) -> dict[str, Any]:
+    require_opaque_id(knowledge_point_id, "kp")
+    row = con.execute(
+        "SELECT k.*,v.candidate_id,v.action,c.run_id FROM knowledge_points k "
+        "JOIN candidate_reviews v ON v.knowledge_point_id=k.id "
+        "JOIN candidates c ON c.id=v.candidate_id WHERE k.id=?",
+        (knowledge_point_id,),
+    ).fetchone()
+    if row is None:
+        raise CoreProblem("INVALID_IDENTIFIER", "knowledge point does not exist")
+    return dict(row)
+
+
+def update_formal_knowledge_point(
+    con: sqlite3.Connection,
+    *,
+    knowledge_point_id: str,
+    title: str,
+    statement: str,
+    content_hash: str,
+    updated_at: str,
+) -> None:
+    changed = con.execute(
+        "UPDATE knowledge_points SET title=?,statement=?,content_hash=?,updated_at=? "
+        "WHERE id=?",
+        (title, statement, content_hash, updated_at, knowledge_point_id),
+    ).rowcount
+    if changed != 1:
+        raise CoreProblem("TRANSACTION_FAILED", "knowledge point update was lost")
+
+
+def reclassify_review_after_point_edit(
+    con: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    title: str,
+    statement: str,
+    edited_at: str,
+) -> bool:
+    row = con.execute(
+        "SELECT action FROM candidate_reviews WHERE candidate_id=?", (candidate_id,)
+    ).fetchone()
+    if row is None or row["action"] not in ("accept", "edited_and_accept"):
+        raise CoreProblem("RUN_STATE_CONFLICT", "knowledge point is not editable")
+    first_edit = row["action"] == "accept"
+    con.execute(
+        "UPDATE candidate_reviews SET action='edited_and_accept',final_title=?,"
+        "final_statement=?,reviewed_at=? WHERE candidate_id=?",
+        (title, statement, edited_at, candidate_id),
+    )
+    return first_edit
+
+
 def insert_formal_knowledge_point(con, *, knowledge_point_id, document_id, candidate_type,
         title, statement, extraction_model, extraction_prompt_version, content_hash, created_at):
     con.execute('INSERT INTO knowledge_points(id,document_id,type,title,statement,extraction_model,'

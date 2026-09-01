@@ -877,6 +877,10 @@ class _MappedCore:
         self.called.append(("get_run", params))
         return {"value": "x" * self.payload_size}
 
+    def update_knowledge_point(self, params: object) -> dict[str, object]:
+        self.called.append(("update_knowledge_point", params))
+        return {"knowledgePoint": {"id": params.get("knowledgePointId")}}
+
     def dangerous(self, params: object) -> dict[str, object]:
         raise AssertionError("arbitrary getattr was called")
 
@@ -891,6 +895,24 @@ def test_dispatcher_uses_only_rpc_methods_getattr_mapping() -> None:
     )
     assert core.called == [("hello", _hello("a" * 64)["params"])]
     assert RPC_METHODS["runs.get"] == "get_run"
+
+
+def test_dispatcher_maps_knowledge_point_update() -> None:
+    core = _MappedCore("a" * 64)
+    dispatcher = RpcDispatcher(core)
+    dispatcher.handle(_hello("a" * 64))
+    params = {
+        "knowledgePointId": "kp_0123456789abcdefabcd",
+        "title": "Edited title",
+        "statement": "Edited statement",
+    }
+
+    assert dispatcher.handle(_request("edit", "knowledge_points.update", params)) == {
+        "jsonrpc": "2.0",
+        "id": "edit",
+        "result": {"knowledgePoint": {"id": "kp_0123456789abcdefabcd"}},
+    }
+    assert core.called[-1] == ("update_knowledge_point", params)
 
 
 def test_response_limit_counts_the_trailing_newline() -> None:
