@@ -1,7 +1,9 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { BetterLearnFloatingApp } from '../src/client/floating-workbench.js'
-import type { ClientApi } from '../src/client/types.js'
+import { LEARNING_LAYOUT_STORAGE_KEY } from '../src/client/learning-layout.js'
+import { sessionKey } from '../src/client/session-state.js'
+import type { ClientApi, KnowledgePointSnapshot, RunSnapshot } from '../src/client/types.js'
 import { WORKBENCH_SIZE_STORAGE_KEY } from '../src/client/workbench-size.js'
 
 interface SessionSnapshot {
@@ -259,5 +261,69 @@ describe('BetterLearn floating workbench shell', () => {
     })
     expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' }).props.style)
       .toMatchObject({ '--betterlearn-user-width': '520px', '--betterlearn-user-height': '680px' })
+  })
+
+  test('opens a selected result as an expanded learning mode and restores the ordinary size', async () => {
+    const sessionStorage = new MemoryStorage()
+    sessionStorage.setItem(sessionKey('session-a'), JSON.stringify({
+      version: 1, runId: 'job_saved', lastEventSeq: 0,
+    }))
+    const sizeStorage = new MemoryStorage()
+    sizeStorage.setItem(WORKBENCH_SIZE_STORAGE_KEY, JSON.stringify({ result: { width: 460, height: 720 } }))
+    const snapshot: RunSnapshot = {
+      runId: 'job_saved', documentId: 'doc_1', status: 'completed', stage: 'done', revision: 4,
+      retryCount: 0, lastEventSeq: 2, modelSelection: { provider: 'provider-a', model: 'model-a' },
+      counts: { rawCandidates: 1, validCandidates: 1, pending: 0, accepted: 1,
+        editedAndAccepted: 0, rejected: 0, knowledgePoints: 1 }, error: null,
+      document: { filename: '闭包.md', mediaType: 'text/markdown', byteSize: 30,
+        characterCount: 16, text: '内部函数保留对词法环境的引用。' },
+    }
+    const point: KnowledgePointSnapshot = {
+      knowledgePointId: 'kp_closure', documentId: 'doc_1', type: 'concept', title: '闭包',
+      statement: '闭包由函数及其词法环境构成。',
+      evidence: [{ seq: 0, quote: '内部函数保留对词法环境的引用', textStart: 0, textEnd: 15,
+        contextBefore: '', contextAfter: '。' }],
+    }
+    const resultApi = {
+      listRuns: vi.fn(async () => ({ runs: [] })),
+      importText: vi.fn(), retryRun: vi.fn(), reviewCandidate: vi.fn(),
+      getRun: vi.fn(async () => snapshot),
+      listEvents: vi.fn(async (_runId: string, after: number) => ({ events: [], nextAfter: after })),
+      listCandidates: vi.fn(async () => ({ candidates: [] })),
+      listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [point] })),
+    } as unknown as ClientApi
+    const source = sessionSource('session-a')
+
+    await act(async () => {
+      renderer = create(<BetterLearnFloatingApp
+        sessions={{ list: source, subagentAddress: () => undefined } as never}
+        modelDirectories={modelDirectories} storage={sessionStorage} sizeStorage={sizeStorage} api={resultApi} />)
+    })
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    await vi.waitFor(() => expect(renderer.root.findByProps({ 'data-screen': 'result' })).toBeDefined())
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' }).props.style)
+      .toMatchObject({ '--betterlearn-user-width': '460px', '--betterlearn-user-height': '720px' })
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-start-learning' }).props.onClick())
+
+    let panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+    expect(panel.props['data-mode']).toBe('learning')
+    expect(panel.props.style).toMatchObject({
+      '--betterlearn-user-width': '1080px', '--betterlearn-user-height': '868px',
+    })
+    expect(renderer.root.findByProps({ 'data-testid': 'learning-lesson' })).toBeDefined()
+    expect(renderer.root.findAllByProps({ 'data-testid': 'betterlearn-history-toggle' })).toHaveLength(0)
+
+    act(() => renderer.root.findByProps({ 'aria-label': '收起课程路径' }).props.onClick())
+    expect(JSON.parse(sizeStorage.getItem(LEARNING_LAYOUT_STORAGE_KEY)!)).toMatchObject({ leftOpen: false })
+
+    act(() => renderer.root.findByProps({ 'aria-label': '返回普通工作台' }).props.onClick())
+    panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+    expect(panel.props['data-mode']).toBe('workbench')
+    expect(panel.props.style).toMatchObject({
+      '--betterlearn-user-width': '460px', '--betterlearn-user-height': '720px',
+    })
+    expect(JSON.parse(sizeStorage.getItem(WORKBENCH_SIZE_STORAGE_KEY)!).result)
+      .toEqual({ width: 460, height: 720 })
   })
 })

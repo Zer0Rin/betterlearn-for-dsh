@@ -8,11 +8,14 @@ export interface ResultSummaryProps {
   knowledgePoints: KnowledgePointSnapshot[]
   onUpdate(point: KnowledgePointSnapshot, input: { title: string; statement: string }): Promise<boolean>
   onReset(): void
+  onStartLearning?(points: KnowledgePointSnapshot[], sourceText: string): void
 }
 
 function EditableKnowledgePointCard({ item, onUpdate }: {
   item: KnowledgePointSnapshot
   onUpdate: ResultSummaryProps['onUpdate']
+  selected?: boolean
+  onSelectionChange?(): void
 }) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(item.title)
@@ -69,8 +72,12 @@ function EditableKnowledgePointCard({ item, onUpdate }: {
   )
 }
 
-export function ResultSummary({ run, knowledgePoints, onUpdate, onReset }: ResultSummaryProps) {
+export function ResultSummary({ run, knowledgePoints, onUpdate, onReset, onStartLearning }: ResultSummaryProps) {
   const zeroCandidates = run.counts.rawCandidates === 0
+  const [selectedPointIds, setSelectedPointIds] = useState(
+    () => new Set(knowledgePoints.map(point => point.knowledgePointId)),
+  )
+  const selectedPoints = knowledgePoints.filter(point => selectedPointIds.has(point.knowledgePointId))
   return (
     <section className="nobei-client__result" aria-labelledby="nobei-result-title">
       <div className="nobei-client__result-meta" data-testid="nobei-result-meta">
@@ -92,9 +99,30 @@ export function ResultSummary({ run, knowledgePoints, onUpdate, onReset }: Resul
       ) : (
         <div className="nobei-client__knowledge-list" data-testid="nobei-knowledge-list">
           {knowledgePoints.map(item => (
-            <EditableKnowledgePointCard key={item.knowledgePointId} item={item} onUpdate={onUpdate} />
+            <div className="nobei-client__knowledge-selectable" key={item.knowledgePointId}>
+              {onStartLearning && <label className="nobei-client__knowledge-selector">
+                <input type="checkbox" data-testid={`nobei-course-point-${item.knowledgePointId}`}
+                  checked={selectedPointIds.has(item.knowledgePointId)}
+                  onChange={() => setSelectedPointIds(current => {
+                    const next = new Set(current)
+                    if (next.has(item.knowledgePointId)) next.delete(item.knowledgePointId)
+                    else next.add(item.knowledgePointId)
+                    return next
+                  })} />
+                <span>加入课程</span>
+              </label>}
+              <EditableKnowledgePointCard item={item} onUpdate={onUpdate} />
+            </div>
           ))}
         </div>
+      )}
+      {onStartLearning && knowledgePoints.length > 0 && (
+        <section className="nobei-client__course-entry" aria-label="创建学习路径">
+          <div><span>下一步</span><strong>把已确认知识点变成可学习的路径</strong>
+            <p>已选择 {selectedPoints.length} / {knowledgePoints.length} 个知识点</p></div>
+          <button data-testid="nobei-start-learning" type="button" disabled={selectedPoints.length === 0}
+            onClick={() => onStartLearning(selectedPoints, run.document.text)}>进入学习空间</button>
+        </section>
       )}
       <button data-testid="nobei-reset" type="button" onClick={onReset}>提取另一篇</button>
     </section>

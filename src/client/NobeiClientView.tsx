@@ -6,7 +6,7 @@ import { ReviewWorkspace } from './components/ReviewWorkspace.js'
 import { RunProgress } from './components/RunProgress.js'
 import type { PollScheduler } from './poll-run.js'
 import { modelSelectionLabel, type ModelSelectionInput } from './model-directory-bridge.js'
-import type { ClientApi } from './types.js'
+import type { ClientApi, KnowledgePointSnapshot } from './types.js'
 import { useNobeiWorkspace, type WorkspaceScreen } from './use-nobei-workspace.js'
 import { workspaceCopy } from './workspace-copy.js'
 
@@ -17,11 +17,12 @@ export interface NobeiWorkspaceProps extends ModelSelectionInput {
   scheduler?: PollScheduler
   onScreenChange?(screen: WorkspaceScreen): void
   historyOpen?: boolean
+  onStartLearning?(points: KnowledgePointSnapshot[], sourceText: string): void
 }
 
 export function NobeiWorkspace({
   sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
-  onScreenChange, historyOpen = false,
+  onScreenChange, historyOpen = false, onStartLearning,
 }: NobeiWorkspaceProps) {
   const workspace = useNobeiWorkspace({
     sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
@@ -94,7 +95,8 @@ export function NobeiWorkspace({
           onSelect={workspace.selectCandidate} onReview={workspace.review} onReload={workspace.reload} />}
         {workspace.screen === 'result' && workspace.run && <ResultSummary run={workspace.run}
           candidates={workspace.candidates} knowledgePoints={workspace.knowledgePoints}
-          onUpdate={workspace.updateKnowledgePoint} onReset={workspace.reset} />}
+          onUpdate={workspace.updateKnowledgePoint} onReset={workspace.reset}
+          onStartLearning={onStartLearning} />}
       </div>
       <p className="nobei-client__live-status" aria-live="polite">{workspace.message ?? unavailableMessage ?? ''}</p>
       </main>
