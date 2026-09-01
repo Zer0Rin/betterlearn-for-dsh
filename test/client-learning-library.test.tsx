@@ -74,6 +74,63 @@ describe('BetterLearn primary entrances and learning bookshelf', () => {
     expect(JSON.stringify(renderer.toJSON())).toContain('继续学习')
   })
 
+  test('keeps management actions hidden until management mode is enabled', () => {
+    const book = createLearningBook({ title: '闭包学习书', points: [point], sourceText: '正文' },
+      { bookId: 'book-1', createdAt: '2026-09-01T10:00:00.000Z' })
+    const onOpenBook = vi.fn()
+    const onEditBook = vi.fn()
+    const renderer = create(<LearningBookshelf books={[book]} onOpenBook={onOpenBook}
+      onEditBook={onEditBook} onDeleteBook={vi.fn(async () => undefined)}
+      onOpenKnowledge={vi.fn()} />)
+
+    expect(renderer.root.findAllByProps({ 'data-testid': 'learning-book-edit-book-1' }))
+      .toHaveLength(0)
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-library-manage' }).props.onClick())
+    expect(JSON.stringify(renderer.toJSON())).toContain('完成')
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-edit-book-1' }).props.onClick())
+
+    expect(onEditBook).toHaveBeenCalledWith(book)
+    expect(onOpenBook).not.toHaveBeenCalled()
+  })
+
+  test('requires inline confirmation and supports cancelling deletion', () => {
+    const book = createLearningBook({ title: '闭包学习书', points: [point], sourceText: '正文' },
+      { bookId: 'book-1', createdAt: '2026-09-01T10:00:00.000Z' })
+    const onDeleteBook = vi.fn(async () => undefined)
+    const renderer = create(<LearningBookshelf books={[book]} onOpenBook={vi.fn()}
+      onEditBook={vi.fn()} onDeleteBook={onDeleteBook} onOpenKnowledge={vi.fn()} />)
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-library-manage' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-delete-book-1' }).props.onClick())
+    expect(onDeleteBook).not.toHaveBeenCalled()
+    expect(JSON.stringify(renderer.toJSON())).toContain('删除这本学习书及全部学习记录？')
+    act(() => renderer.root.findByProps({
+      'data-testid': 'learning-book-delete-cancel-book-1',
+    }).props.onClick())
+
+    expect(onDeleteBook).not.toHaveBeenCalled()
+    expect(JSON.stringify(renderer.toJSON())).not.toContain('删除这本学习书及全部学习记录？')
+  })
+
+  test('keeps a book actionable and reports when confirmed deletion fails', async () => {
+    const book = createLearningBook({ title: '闭包学习书', points: [point], sourceText: '正文' },
+      { bookId: 'book-1', createdAt: '2026-09-01T10:00:00.000Z' })
+    const onDeleteBook = vi.fn(async () => { throw new Error('offline') })
+    const renderer = create(<LearningBookshelf books={[book]} onOpenBook={vi.fn()}
+      onEditBook={vi.fn()} onDeleteBook={onDeleteBook} onOpenKnowledge={vi.fn()} />)
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-library-manage' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-delete-book-1' }).props.onClick())
+    await act(async () => renderer.root.findByProps({
+      'data-testid': 'learning-book-delete-confirm-book-1',
+    }).props.onClick())
+
+    expect(onDeleteBook).toHaveBeenCalledWith(book)
+    expect(JSON.stringify(renderer.toJSON())).toContain('删除失败，请重试。学习书和进度仍然保留。')
+    expect(renderer.root.findByProps({ 'data-testid': 'learning-book-delete-confirm-book-1' })
+      .props.disabled).toBe(false)
+  })
+
   test('edits the title and moves points before creating a draft', () => {
     const onCreate = vi.fn()
     const renderer = create(<LearningBookComposer points={[point, second]}
@@ -120,5 +177,19 @@ describe('BetterLearn primary entrances and learning bookshelf', () => {
       .props.onClick())
     expect(renderer.root.findByProps({ 'data-testid': 'learning-book-create' }).props.disabled).toBe(true)
     expect(JSON.stringify(renderer.toJSON())).toContain('至少保留一个知识点')
+  })
+
+  test('uses the existing title and explicit edit-mode copy', () => {
+    const onCreate = vi.fn()
+    const renderer = create(<LearningBookComposer points={[point]} initialTitle="闭包旧书"
+      heading="修改学习书" submitLabel="保存为新版本"
+      onCreate={onCreate} onCancel={vi.fn()} />)
+
+    expect(renderer.root.findByProps({ 'data-testid': 'learning-book-title' }).props.value)
+      .toBe('闭包旧书')
+    expect(JSON.stringify(renderer.toJSON())).toContain('修改学习书')
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-create' }).props.onClick())
+    expect(onCreate).toHaveBeenCalledWith({ title: '闭包旧书', points: [point] })
+    expect(JSON.stringify(renderer.toJSON())).toContain('保存为新版本')
   })
 })

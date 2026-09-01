@@ -43,12 +43,49 @@ export interface LearningBookshelfProps {
   newBookId?: string
   storageWarning?: string
   onOpenBook(book: LearningBook): void
+  onEditBook(book: LearningBook): void
+  onDeleteBook(book: LearningBook): Promise<void>
   onOpenKnowledge(): void
 }
 
 export function LearningBookshelf({
-  books, newBookId, storageWarning, onOpenBook, onOpenKnowledge,
+  books, newBookId, storageWarning, onOpenBook, onEditBook, onDeleteBook, onOpenKnowledge,
 }: LearningBookshelfProps) {
+  const [managing, setManaging] = useState(false)
+  const [deleteBookId, setDeleteBookId] = useState<string>()
+  const [deletingBookId, setDeletingBookId] = useState<string>()
+  const [deleteError, setDeleteError] = useState<string>()
+
+  const toggleManaging = () => {
+    setManaging(current => !current)
+    setDeleteBookId(undefined)
+    setDeletingBookId(undefined)
+    setDeleteError(undefined)
+  }
+
+  const askToDelete = (bookId: string) => {
+    setDeleteBookId(bookId)
+    setDeleteError(undefined)
+  }
+
+  const cancelDelete = () => {
+    setDeleteBookId(undefined)
+    setDeleteError(undefined)
+  }
+
+  const confirmDelete = async (book: LearningBook) => {
+    setDeletingBookId(book.bookId)
+    setDeleteError(undefined)
+    try {
+      await onDeleteBook(book)
+      setDeleteBookId(undefined)
+    } catch {
+      setDeleteError('删除失败，请重试。学习书和进度仍然保留。')
+    } finally {
+      setDeletingBookId(undefined)
+    }
+  }
+
   return (
     <main className="betterlearn-library" data-testid="learning-bookshelf">
       <header className="betterlearn-library__heading">
@@ -57,6 +94,12 @@ export function LearningBookshelf({
           <h1>学习空间</h1>
           <span>知识点先被整合为学习书；打开一本书，才进入具体学习。</span>
         </div>
+        {books.length > 0 && <div className="betterlearn-library__heading-actions">
+          <button type="button" data-testid="learning-library-manage"
+            aria-pressed={managing} onClick={toggleManaging}>
+            {managing ? '完成' : '管理'}
+          </button>
+        </div>}
       </header>
       {storageWarning && <p className="betterlearn-library__warning">{storageWarning}</p>}
       {books.length === 0 ? (
@@ -70,24 +113,53 @@ export function LearningBookshelf({
       ) : (
         <section className="betterlearn-library__shelf" aria-label="学习书">
           {books.map((book, index) => (
-            <button key={book.bookId} type="button" className="betterlearn-library__book"
-              data-testid={`learning-book-${book.bookId}`}
-              data-new={book.bookId === newBookId ? 'true' : 'false'}
-              onClick={() => onOpenBook(book)}>
-              <span className="betterlearn-library__cover" aria-hidden="true">
-                <i>{String(index + 1).padStart(2, '0')}</i>
-                <b>BETTER<br />LEARN</b>
-                <small>学习书</small>
-              </span>
-              <span className="betterlearn-library__book-copy">
-                <small>{book.points.length} 个知识点 · {book.progress
-                  ? `已完成 ${book.progress.completed}/${book.progress.total} · 掌握度 ${book.progress.mastery}%`
-                  : book.bookId === newBookId ? '刚刚创建' : '尚未开始'}</small>
-                <strong>{book.title}</strong>
-                <span>{book.points.slice(0, 3).map(point => point.title).join(' · ')}</span>
-                <em>{book.progress ? '继续学习 →' : '开始学习 →'}</em>
-              </span>
-            </button>
+            <article key={book.bookId} className="betterlearn-library__book-shell"
+              data-managing={managing ? 'true' : 'false'}>
+              <button type="button" className="betterlearn-library__book"
+                data-testid={`learning-book-${book.bookId}`}
+                data-new={book.bookId === newBookId ? 'true' : 'false'}
+                disabled={managing || deletingBookId === book.bookId}
+                onClick={() => onOpenBook(book)}>
+                <span className="betterlearn-library__cover" aria-hidden="true">
+                  <i>{String(index + 1).padStart(2, '0')}</i>
+                  <b>BETTER<br />LEARN</b>
+                  <small>学习书</small>
+                </span>
+                <span className="betterlearn-library__book-copy">
+                  <small>{book.points.length} 个知识点 · {book.progress
+                    ? `已完成 ${book.progress.completed}/${book.progress.total} · 掌握度 ${book.progress.mastery}%`
+                    : book.bookId === newBookId ? '刚刚创建' : '尚未开始'}</small>
+                  <strong>{book.title}</strong>
+                  <span>{book.points.slice(0, 3).map(point => point.title).join(' · ')}</span>
+                  <em>{managing ? '管理这本学习书' : book.progress ? '继续学习 →' : '开始学习 →'}</em>
+                </span>
+              </button>
+              {managing && deleteBookId !== book.bookId && (
+                <div className="betterlearn-library__book-actions">
+                  <button type="button" data-testid={`learning-book-edit-${book.bookId}`}
+                    disabled={deletingBookId !== undefined} onClick={() => onEditBook(book)}>修改</button>
+                  <button type="button" data-testid={`learning-book-delete-${book.bookId}`}
+                    disabled={deletingBookId !== undefined}
+                    onClick={() => askToDelete(book.bookId)}>删除</button>
+                </div>
+              )}
+              {managing && deleteBookId === book.bookId && (
+                <div className="betterlearn-library__delete-confirm" role="alert">
+                  <strong>删除这本学习书及全部学习记录？</strong>
+                  <span>课程、答题记录和掌握度都会被删除。</span>
+                  {deleteError && <p>{deleteError}</p>}
+                  <div>
+                    <button type="button" data-testid={`learning-book-delete-cancel-${book.bookId}`}
+                      disabled={deletingBookId === book.bookId} onClick={cancelDelete}>取消</button>
+                    <button type="button" data-testid={`learning-book-delete-confirm-${book.bookId}`}
+                      disabled={deletingBookId === book.bookId}
+                      onClick={() => void confirmDelete(book)}>
+                      {deletingBookId === book.bookId ? '正在删除…' : '确认删除'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </article>
           ))}
         </section>
       )}
@@ -102,6 +174,9 @@ export interface LearningBookDraftResult {
 
 export interface LearningBookComposerProps {
   points: KnowledgePointSnapshot[]
+  initialTitle?: string
+  heading?: string
+  submitLabel?: string
   onCreate(result: LearningBookDraftResult): void
   onCancel(): void
 }
@@ -113,8 +188,10 @@ function defaultBookTitle(points: KnowledgePointSnapshot[]): string {
   return `${first.title}等 ${points.length} 个知识点`
 }
 
-export function LearningBookComposer({ points, onCreate, onCancel }: LearningBookComposerProps) {
-  const [title, setTitle] = useState(() => defaultBookTitle(points))
+export function LearningBookComposer({
+  points, initialTitle, heading = '整理为学习书', submitLabel = '创建学习书', onCreate, onCancel,
+}: LearningBookComposerProps) {
+  const [title, setTitle] = useState(() => initialTitle ?? defaultBookTitle(points))
   const [orderedPoints, setOrderedPoints] = useState(() => [...points])
 
   const movePoint = (index: number, offset: -1 | 1) => {
@@ -138,7 +215,7 @@ export function LearningBookComposer({ points, onCreate, onCancel }: LearningBoo
     <main className="betterlearn-composer" data-testid="learning-book-composer">
       <header className="betterlearn-composer__heading">
         <p>Compose a Learning Book</p>
-        <h1>整理为学习书</h1>
+        <h1>{heading}</h1>
         <span>命名这本书，并确定知识点的学习顺序。</span>
       </header>
 
@@ -185,7 +262,7 @@ export function LearningBookComposer({ points, onCreate, onCancel }: LearningBoo
         <button type="button" data-testid="learning-book-cancel" onClick={onCancel}>取消</button>
         <button type="button" data-testid="learning-book-create" disabled={!canCreate}
           onClick={() => canCreate && onCreate({ title: title.trim(), points: orderedPoints })}>
-          创建学习书
+          {submitLabel}
         </button>
       </footer>
     </main>

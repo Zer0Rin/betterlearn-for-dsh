@@ -298,8 +298,11 @@ export const CLIENT_CSS = `
 .betterlearn-gateway__entries p { max-width: 31ch; margin: 0; color: var(--nobei-muted); font-size: 0.82rem; line-height: 1.65; }
 .betterlearn-gateway__entries em { align-self: end; color: var(--nobei-action); font-size: 0.76rem; font-style: normal; font-weight: 750; }
 .betterlearn-gateway__entries button:last-child em { color: var(--nobei-accepted); }
-.betterlearn-library__heading { display: grid; gap: 13px; align-items: start; margin-block-end: 22px; }
+.betterlearn-library__heading { display: flex; gap: 18px; align-items: start; justify-content: space-between; margin-block-end: 22px; }
 .betterlearn-library__heading > div { display: grid; gap: 6px; }
+.betterlearn-library__heading-actions { flex: 0 0 auto; }
+.betterlearn-library__heading-actions button { border: 1px solid var(--nobei-line); border-radius: 9px; padding: 8px 13px; color: var(--nobei-action); background: var(--nobei-surface); font: inherit; font-weight: 750; cursor: pointer; }
+.betterlearn-library__heading-actions button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--nobei-action) 42%, var(--nobei-line)); background: color-mix(in srgb, var(--nobei-action) 7%, var(--nobei-surface)); }
 .betterlearn-library__warning { margin: 0 0 16px; border: 1px solid color-mix(in srgb, var(--nobei-evidence) 42%, var(--nobei-line)); border-radius: 10px; padding: 10px 12px; color: color-mix(in srgb, var(--nobei-evidence) 82%, var(--nobei-ink)); background: color-mix(in srgb, var(--nobei-evidence) 8%, var(--nobei-surface)); font-size: 0.76rem; line-height: 1.5; }
 .betterlearn-library__empty { display: grid; justify-items: start; gap: 8px; border: 1px dashed var(--nobei-line); border-radius: 15px; padding: 28px 22px; background: var(--nobei-surface); }
 .betterlearn-library__empty > span { color: var(--nobei-evidence); font: 750 0.68rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -307,8 +310,11 @@ export const CLIENT_CSS = `
 .betterlearn-library__empty p { margin: 0; color: var(--nobei-muted); line-height: 1.6; }
 .betterlearn-library__empty button { margin-block-start: 8px; border: 1px solid var(--nobei-action); border-radius: 9px; padding: 9px 13px; color: #FFFFFF; background: var(--nobei-action); font-weight: 750; cursor: pointer; }
 .betterlearn-library__shelf { display: grid; gap: 13px; }
+.betterlearn-library__book-shell { display: grid; gap: 9px; }
 .betterlearn-library__book { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 16px; width: 100%; border: 1px solid var(--nobei-line); border-radius: 15px; padding: 14px; text-align: start; color: var(--nobei-ink); background: var(--nobei-surface); box-shadow: 0 12px 28px rgb(23 32 51 / 0.07); cursor: pointer; }
 .betterlearn-library__book:hover { border-color: color-mix(in srgb, var(--nobei-accepted) 48%, var(--nobei-line)); transform: translateY(-1px); box-shadow: 0 16px 34px rgb(23 32 51 / 0.1); }
+.betterlearn-library__book:disabled { cursor: default; opacity: 1; }
+.betterlearn-library__book-shell[data-managing="true"] .betterlearn-library__book { border-style: dashed; box-shadow: none; transform: none; }
 .betterlearn-library__book[data-new="true"] { border-color: color-mix(in srgb, var(--nobei-accepted) 62%, var(--nobei-line)); background: color-mix(in srgb, var(--nobei-accepted) 6%, var(--nobei-surface)); box-shadow: 0 14px 34px rgb(47 143 107 / 0.15); }
 .betterlearn-library__cover { position: relative; display: grid; align-content: space-between; min-height: 126px; border-radius: 4px 10px 10px 4px; padding: 11px 9px 10px 15px; color: #FFFFFF; background: #2347C7; box-shadow: inset 5px 0 rgb(255 255 255 / 0.18), 6px 7px 0 color-mix(in srgb, var(--nobei-action) 12%, var(--nobei-line)); }
 .betterlearn-library__cover i { font: 750 0.65rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; font-style: normal; opacity: 0.78; }
@@ -319,6 +325,15 @@ export const CLIENT_CSS = `
 .betterlearn-library__book-copy > strong { overflow-wrap: anywhere; font: 750 1.08rem/1.3 ui-serif, "Songti SC", "STSong", Georgia, serif; }
 .betterlearn-library__book-copy > span { overflow: hidden; color: var(--nobei-muted); font-size: 0.75rem; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .betterlearn-library__book-copy > em { color: var(--nobei-action); font-size: 0.75rem; font-style: normal; font-weight: 750; }
+.betterlearn-library__book-actions { display: flex; justify-content: flex-end; gap: 8px; padding-inline: 108px 4px; }
+.betterlearn-library__book-actions button, .betterlearn-library__delete-confirm button { border: 1px solid var(--nobei-line); border-radius: 8px; padding: 7px 12px; color: var(--nobei-action); background: var(--nobei-surface); font: inherit; font-size: 0.75rem; font-weight: 750; cursor: pointer; }
+.betterlearn-library__book-actions button:last-child, .betterlearn-library__delete-confirm button:last-child { border-color: color-mix(in srgb, var(--nobei-rejected) 50%, var(--nobei-line)); color: var(--nobei-rejected); }
+.betterlearn-library__book-actions button:disabled, .betterlearn-library__delete-confirm button:disabled { cursor: not-allowed; opacity: 0.5; }
+.betterlearn-library__delete-confirm { display: grid; gap: 7px; margin-inline-start: 108px; border: 1px solid color-mix(in srgb, var(--nobei-rejected) 38%, var(--nobei-line)); border-radius: 11px; padding: 12px; background: color-mix(in srgb, var(--nobei-rejected) 5%, var(--nobei-surface)); }
+.betterlearn-library__delete-confirm > strong { font-size: 0.82rem; }
+.betterlearn-library__delete-confirm > span { color: var(--nobei-muted); font-size: 0.73rem; }
+.betterlearn-library__delete-confirm > p { margin: 0; color: var(--nobei-rejected); font-size: 0.73rem; font-weight: 700; }
+.betterlearn-library__delete-confirm > div { display: flex; justify-content: flex-end; gap: 8px; }
 .betterlearn-composer { display: flex; flex-direction: column; }
 .betterlearn-composer__heading { display: grid; gap: 7px; flex: 0 0 auto; margin-block-end: 20px; }
 .betterlearn-composer__editor { display: grid; gap: 10px; }

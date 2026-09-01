@@ -67,6 +67,9 @@ describe('phase1d scoped styles', () => {
     expect(CLIENT_CSS).toContain('.betterlearn-composer__point-actions')
     expect(CLIENT_CSS).toContain('.betterlearn-library__book[data-new="true"]')
     expect(CLIENT_CSS).toContain('.betterlearn-library__warning')
+    expect(CLIENT_CSS).toContain('.betterlearn-library__heading-actions')
+    expect(CLIENT_CSS).toContain('.betterlearn-library__book-actions')
+    expect(CLIENT_CSS).toContain('.betterlearn-library__delete-confirm')
     expect(CLIENT_CSS).toContain('@container (max-width: 820px)')
     expect(CLIENT_CSS).toContain('.betterlearn-learning[data-left-open="false"][data-right-open="false"]')
     const compactFontSizes = [...CLIENT_CSS.matchAll(/\.nobei-client \{[^}]*font-size:\s*(\d+)px/g)]
