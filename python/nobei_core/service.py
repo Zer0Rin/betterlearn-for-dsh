@@ -39,6 +39,7 @@ from nobei_core.repository import (
     append_event,
     candidate_evidence,
     close_candidate_review,
+    delete_run_graph,
     find_idempotency_result,
     insert_candidate,
     insert_formal_evidence,
@@ -1071,6 +1072,13 @@ class Phase1Core:
                 "candidateCount": row["valid_candidate_count"],
                 "knowledgePointCount": row["accepted_candidate_count"],
             } for row in read_run_history(con)]}
+
+    def delete_run(self, params: object) -> dict[str, object]:
+        command = _require_params(params, frozenset({"runId"}))
+        run_id = require_opaque_id(command["runId"], "job")
+        with _transactional_write(self._database, "run deletion failed") as con:
+            delete_run_graph(con, run_id)
+            return {"runId": run_id, "deleted": True}
 
     def list_events(self, params: object) -> dict[str, object]:
         command = _require_params(params, frozenset({'runId', 'after'}))

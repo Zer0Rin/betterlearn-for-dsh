@@ -881,6 +881,10 @@ class _MappedCore:
         self.called.append(("update_knowledge_point", params))
         return {"knowledgePoint": {"id": params.get("knowledgePointId")}}
 
+    def delete_run(self, params: object) -> dict[str, object]:
+        self.called.append(("delete_run", params))
+        return {"runId": params.get("runId"), "deleted": True}
+
     def dangerous(self, params: object) -> dict[str, object]:
         raise AssertionError("arbitrary getattr was called")
 
@@ -913,6 +917,18 @@ def test_dispatcher_maps_knowledge_point_update() -> None:
         "result": {"knowledgePoint": {"id": "kp_0123456789abcdefabcd"}},
     }
     assert core.called[-1] == ("update_knowledge_point", params)
+
+
+def test_dispatcher_maps_run_delete() -> None:
+    core = _MappedCore("a" * 64)
+    dispatcher = RpcDispatcher(core)
+    dispatcher.handle(_hello("a" * 64))
+    params = {"runId": "job_0123456789abcdefabcd"}
+    assert dispatcher.handle(_request("delete", "runs.delete", params)) == {
+        "jsonrpc": "2.0", "id": "delete",
+        "result": {**params, "deleted": True},
+    }
+    assert core.called[-1] == ("delete_run", params)
 
 
 def test_response_limit_counts_the_trailing_newline() -> None:

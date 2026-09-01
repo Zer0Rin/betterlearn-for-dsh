@@ -736,6 +736,36 @@ def reclassify_review_after_point_edit(
     return first_edit
 
 
+def delete_run_graph(con: sqlite3.Connection, run_id: str) -> None:
+    run = require_run(con, run_id)
+    candidate_ids = {
+        row["id"]
+        for row in con.execute("SELECT id FROM candidates WHERE run_id=?", (run_id,))
+    }
+    for row in con.execute(
+        "SELECT idempotency_key,result_json FROM idempotency_records "
+        "WHERE scope='candidate_review'"
+    ):
+        result = json.loads(row["result_json"])
+        candidate = result.get("candidate") if isinstance(result, dict) else None
+        if isinstance(candidate, dict) and candidate.get("candidateId") in candidate_ids:
+            con.execute(
+                "DELETE FROM idempotency_records "
+                "WHERE scope='candidate_review' AND idempotency_key=?",
+                (row["idempotency_key"],),
+            )
+    con.execute(
+        "DELETE FROM candidate_reviews WHERE candidate_id IN "
+        "(SELECT id FROM candidates WHERE run_id=?)",
+        (run_id,),
+    )
+    changed = con.execute(
+        "DELETE FROM documents WHERE id=?", (run["document_id"],)
+    ).rowcount
+    if changed != 1:
+        raise CoreProblem("TRANSACTION_FAILED", "run document was not deleted")
+
+
 def insert_formal_knowledge_point(con, *, knowledge_point_id, document_id, candidate_type,
         title, statement, extraction_model, extraction_prompt_version, content_hash, created_at):
     con.execute('INSERT INTO knowledge_points(id,document_id,type,title,statement,extraction_model,'

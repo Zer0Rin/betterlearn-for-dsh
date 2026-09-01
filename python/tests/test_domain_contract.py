@@ -109,6 +109,7 @@ def test_rpc_methods_are_closed():
         "runs.get": "get_run",
         "runs.list": "list_runs",
         "runs.list_events": "list_events",
+        "runs.delete": "delete_run",
         "runs.retry": "retry",
         "runs.retry_and_prepare_generation": "retry_and_prepare_generation",
         "candidates.list": "list_candidates",
