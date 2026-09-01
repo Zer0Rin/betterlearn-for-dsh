@@ -60,6 +60,9 @@ describe('phase1d scoped styles', () => {
     expect(CLIENT_CSS).toContain('grid-template-columns: 224px minmax(0, 1fr) 250px')
     expect(CLIENT_CSS).toContain('.betterlearn-learning__path ol::before')
     expect(CLIENT_CSS).toContain('.betterlearn-learning__evidence blockquote')
+    expect(CLIENT_CSS).toContain('.betterlearn-gateway__entries')
+    expect(CLIENT_CSS).toContain('.betterlearn-library__book')
+    expect(CLIENT_CSS).toContain('.betterlearn-library__cover')
     expect(CLIENT_CSS).toContain('@container (max-width: 820px)')
     expect(CLIENT_CSS).toContain('.betterlearn-learning[data-left-open="false"][data-right-open="false"]')
     const compactFontSizes = [...CLIENT_CSS.matchAll(/\.nobei-client \{[^}]*font-size:\s*(\d+)px/g)]
@@ -79,7 +82,7 @@ describe('phase1d scoped styles', () => {
     for (const block of selectorBlocks) {
       const selectors = block.replace(/\{$/, '').split(',')
       for (const selector of selectors) {
-        expect(selector.trim()).toMatch(/^(\.nobei-client|\.nobei-history|\.betterlearn-floating|\.betterlearn-learning)/)
+        expect(selector.trim()).toMatch(/^(\.nobei-client|\.nobei-history|\.betterlearn-floating|\.betterlearn-learning|\.betterlearn-gateway|\.betterlearn-library)/)
       }
     }
   })

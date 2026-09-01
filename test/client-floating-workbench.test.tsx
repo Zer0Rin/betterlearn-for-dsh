@@ -130,6 +130,9 @@ describe('BetterLearn floating workbench shell', () => {
 
     expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })).toBeDefined()
     expect(renderer.root.findAllByProps({ 'data-testid': 'betterlearn-launcher' })).toHaveLength(0)
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-gateway' })).toBeDefined()
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-knowledge-entry' })).toBeDefined()
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-library-entry' })).toBeDefined()
   })
 
   test('collapses an open panel on Escape', () => {
@@ -220,6 +223,7 @@ describe('BetterLearn floating workbench shell', () => {
         modelDirectories={modelDirectories} storage={storage as never} api={api} />)
     })
     act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-knowledge-entry' }).props.onClick())
     let panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
     expect(panel.props['data-history-open']).toBe('false')
 
@@ -307,7 +311,7 @@ describe('BetterLearn floating workbench shell', () => {
       .toMatchObject({ '--betterlearn-user-width': '520px', '--betterlearn-user-height': '680px' })
   })
 
-  test('opens a selected result as an expanded learning mode and restores the ordinary size', async () => {
+  test('organizes selected points into a book, opens that book, and returns to its bookshelf', async () => {
     const sessionStorage = new MemoryStorage()
     sessionStorage.setItem(sessionKey('session-a'), JSON.stringify({
       version: 1, runId: 'job_saved', lastEventSeq: 0,
@@ -348,9 +352,19 @@ describe('BetterLearn floating workbench shell', () => {
     expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' }).props.style)
       .toMatchObject({ '--betterlearn-user-width': '460px', '--betterlearn-user-height': '720px' })
 
-    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-start-learning' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-create-learning-book' }).props.onClick())
 
     let panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+    expect(panel.props['data-mode']).toBe('workbench')
+    expect(panel.props['data-area']).toBe('library')
+    expect(panel.props.style).toMatchObject({
+      '--betterlearn-user-width': '460px', '--betterlearn-user-height': '720px',
+    })
+    expect(renderer.root.findByProps({ 'data-testid': 'learning-bookshelf' })).toBeDefined()
+    expect(renderer.root.findAllByProps({ 'data-testid': 'learning-lesson' })).toHaveLength(0)
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-preview-kp_closure' }).props.onClick())
+    panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
     expect(panel.props['data-mode']).toBe('learning')
     expect(panel.props.style).toMatchObject({
       '--betterlearn-user-width': '1080px', '--betterlearn-user-height': '868px',
@@ -364,6 +378,8 @@ describe('BetterLearn floating workbench shell', () => {
     act(() => renderer.root.findByProps({ 'aria-label': '返回普通工作台' }).props.onClick())
     panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
     expect(panel.props['data-mode']).toBe('workbench')
+    expect(panel.props['data-area']).toBe('library')
+    expect(renderer.root.findByProps({ 'data-testid': 'learning-bookshelf' })).toBeDefined()
     expect(panel.props.style).toMatchObject({
       '--betterlearn-user-width': '460px', '--betterlearn-user-height': '720px',
     })

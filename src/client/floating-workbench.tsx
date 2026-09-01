@@ -6,6 +6,7 @@ import {
 } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClientApi } from './client-api.js'
+import { BetterLearnGateway, LearningBookshelf } from './components/LearningLibrary.js'
 import { LearningSpace } from './components/LearningSpace.js'
 import { readLearningLayout, writeLearningLayout } from './learning-layout.js'
 import { createLearningPreviewCourse, type LearningPreviewCourse } from './learning-preview.js'
@@ -48,6 +49,7 @@ interface ResizeGesture {
 }
 
 type FloatingMode = 'workbench' | 'learning'
+type WorkbenchArea = 'home' | 'knowledge' | 'library'
 
 function currentViewport(): ViewportSize {
   return { width: window.innerWidth, height: window.innerHeight }
@@ -62,12 +64,12 @@ interface FloatingSessionWorkspaceProps {
   api: ClientApi
   onScreenChange(screen: WorkspaceScreen): void
   historyOpen: boolean
-  onStartLearning(points: KnowledgePointSnapshot[], sourceText: string): void
+  onCreateLearningBook(points: KnowledgePointSnapshot[], sourceText: string): void
 }
 
 function FloatingSessionWorkspace({
   sessionId, ordinarySession, conversations, modelDirectories, storage, api, onScreenChange, historyOpen,
-  onStartLearning,
+  onCreateLearningBook,
 }: FloatingSessionWorkspaceProps) {
   const face = useMemo(() => modelSelectionInjection(modelDirectories, sessionId, ordinarySession),
     [modelDirectories, ordinarySession, sessionId])
@@ -80,7 +82,7 @@ function FloatingSessionWorkspace({
     ordinarySession={ordinarySession} modelDirectoryState={modelDirectoryState}
     loadModelSelection={face.loadModelSelection} readModelDirectory={face.readModelDirectory}
     onScreenChange={onScreenChange} historyOpen={historyOpen}
-    onStartLearning={onStartLearning} conversations={conversations} />
+    onCreateLearningBook={onCreateLearningBook} conversations={conversations} />
 }
 
 export function BetterLearnFloatingApp({
@@ -111,7 +113,9 @@ export function BetterLearnFloatingApp({
     viewport,
   ))
   const [mode, setMode] = useState<FloatingMode>('workbench')
+  const [area, setArea] = useState<WorkbenchArea>('home')
   const [previewCourse, setPreviewCourse] = useState<LearningPreviewCourse>()
+  const [learningBooks, setLearningBooks] = useState<LearningPreviewCourse[]>([])
   const [learningLayout, setLearningLayout] = useState(() => readLearningLayout(persistentSizeStorage))
   const [resizing, setResizing] = useState(false)
   const resizeGesture = useRef<ResizeGesture>()
@@ -199,6 +203,7 @@ export function BetterLearnFloatingApp({
           sizeRef.current = next
           setSize(next)
           setMode('workbench')
+          setArea('library')
           setPreviewCourse(undefined)
         }
         setHistoryOpen(false)
@@ -217,13 +222,20 @@ export function BetterLearnFloatingApp({
     })
   }
 
-  function enterLearning(points: KnowledgePointSnapshot[], sourceText: string): void {
+  function createLearningBook(points: KnowledgePointSnapshot[], sourceText: string): void {
     if (points.length === 0) return
+    const book = createLearningPreviewCourse(points, sourceText)
+    setLearningBooks(current => [book, ...current.filter(item => item.courseId !== book.courseId)])
+    setHistoryOpen(false)
+    setArea('library')
+  }
+
+  function enterLearning(book: LearningPreviewCourse): void {
     ordinarySize.current = sizeRef.current
     const next = clampWorkbenchSize({ width: 1080, height: viewport.height - 32 }, viewport)
     sizeRef.current = next
     setSize(next)
-    setPreviewCourse(createLearningPreviewCourse(points, sourceText))
+    setPreviewCourse(book)
     setHistoryOpen(false)
     setMode('learning')
   }
@@ -235,7 +247,13 @@ export function BetterLearnFloatingApp({
     sizeRef.current = next
     setSize(next)
     setMode('workbench')
+    setArea('library')
     setPreviewCourse(undefined)
+  }
+
+  function openArea(next: WorkbenchArea): void {
+    setHistoryOpen(false)
+    setArea(next)
   }
 
   function collapsePanel(): void {
@@ -257,6 +275,7 @@ export function BetterLearnFloatingApp({
 
   return <aside className="betterlearn-floating-panel" data-testid="betterlearn-floating-panel"
     data-mode={mode}
+    data-area={area}
     data-left-open={learningLayout.leftOpen ? 'true' : 'false'}
     data-right-open={learningLayout.rightOpen ? 'true' : 'false'}
     data-screen={screen} data-history-open={historyOpen ? 'true' : 'false'}
@@ -273,31 +292,43 @@ export function BetterLearnFloatingApp({
       onPointerDown={event => beginResize('both', event)} />
     <header className="betterlearn-floating-header">
       <div className="betterlearn-floating-header__leading">
-        {mode === 'workbench' && sessionId !== undefined && <button type="button"
+        {mode === 'workbench' && area !== 'home' && <button type="button"
+          aria-label="返回 BetterLearn 首页" onClick={() => openArea('home')}>首页</button>}
+        {mode === 'workbench' && area === 'knowledge' && sessionId !== undefined && <button type="button"
           data-testid="betterlearn-history-toggle"
           aria-label={historyOpen ? '收起提取历史' : '展开提取历史'} aria-expanded={historyOpen}
           onClick={() => setHistoryOpen(value => !value)}>历史</button>}
-        <strong>{mode === 'learning' ? 'BetterLearn · 学习' : 'BetterLearn'}</strong>
+        <strong>{mode === 'learning' ? 'BetterLearn · 学习'
+          : area === 'knowledge' ? 'BetterLearn · 知识点'
+          : area === 'library' ? 'BetterLearn · 学习空间' : 'BetterLearn'}</strong>
       </div>
       <button type="button" aria-label="收起 BetterLearn" onClick={collapsePanel}>收起</button>
     </header>
-    {sessionId === undefined
-      ? <p className="betterlearn-floating-empty">先在 DSH 创建或选择普通会话，再使用 BetterLearn。</p>
-      : <>
-        {mode === 'learning' && previewCourse !== undefined
-          ? <LearningSpace course={previewCourse} sourceText={previewCourse.sourceText}
-            leftOpen={learningLayout.leftOpen} rightOpen={learningLayout.rightOpen}
-            onLeftOpenChange={open => updateLearningLayout('leftOpen', open)}
-            onRightOpenChange={open => updateLearningLayout('rightOpen', open)}
-            onExit={exitLearning} />
-          : null}
-        <div className="betterlearn-floating-workbench" hidden={mode === 'learning'}>
+    {mode === 'workbench' && area === 'home'
+      ? <BetterLearnGateway bookCount={learningBooks.length} knowledgeAvailable={sessionId !== undefined}
+        onOpenKnowledge={() => openArea('knowledge')} onOpenLearning={() => openArea('library')} />
+      : null}
+    {mode === 'workbench' && area === 'library'
+      ? <LearningBookshelf books={learningBooks} onOpenBook={enterLearning}
+        onOpenKnowledge={() => openArea('knowledge')} />
+      : null}
+    {mode === 'learning' && previewCourse !== undefined
+      ? <LearningSpace course={previewCourse} sourceText={previewCourse.sourceText}
+        leftOpen={learningLayout.leftOpen} rightOpen={learningLayout.rightOpen}
+        onLeftOpenChange={open => updateLearningLayout('leftOpen', open)}
+        onRightOpenChange={open => updateLearningLayout('rightOpen', open)}
+        onExit={exitLearning} />
+      : null}
+    {sessionId !== undefined
+      ? <div className="betterlearn-floating-workbench"
+        hidden={mode === 'learning' || area !== 'knowledge'}>
           <FloatingSessionWorkspace key={sessionId} sessionId={sessionId} ordinarySession={ordinarySession}
             conversations={conversations}
             modelDirectories={modelDirectories} storage={storage} api={clientApi}
-            onScreenChange={setScreen} historyOpen={historyOpen} onStartLearning={enterLearning} />
+            onScreenChange={setScreen} historyOpen={historyOpen}
+            onCreateLearningBook={createLearningBook} />
         </div>
-      </>}
+      : null}
   </aside>
 }
 

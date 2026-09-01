@@ -8,7 +8,7 @@ export interface ResultSummaryProps {
   knowledgePoints: KnowledgePointSnapshot[]
   onUpdate(point: KnowledgePointSnapshot, input: { title: string; statement: string }): Promise<boolean>
   onReset(): void
-  onStartLearning?(points: KnowledgePointSnapshot[], sourceText: string): void
+  onCreateLearningBook?(points: KnowledgePointSnapshot[], sourceText: string): void
 }
 
 function EditableKnowledgePointCard({ item, onUpdate }: {
@@ -70,7 +70,9 @@ function EditableKnowledgePointCard({ item, onUpdate }: {
   )
 }
 
-export function ResultSummary({ run, knowledgePoints, onUpdate, onReset, onStartLearning }: ResultSummaryProps) {
+export function ResultSummary({
+  run, knowledgePoints, onUpdate, onReset, onCreateLearningBook,
+}: ResultSummaryProps) {
   const zeroCandidates = run.counts.rawCandidates === 0
   const [selectedPointIds, setSelectedPointIds] = useState(
     () => new Set(knowledgePoints.map(point => point.knowledgePointId)),
@@ -98,7 +100,7 @@ export function ResultSummary({ run, knowledgePoints, onUpdate, onReset, onStart
         <div className="nobei-client__knowledge-list" data-testid="nobei-knowledge-list">
           {knowledgePoints.map(item => (
             <div className="nobei-client__knowledge-selectable" key={item.knowledgePointId}>
-              {onStartLearning && <label className="nobei-client__knowledge-selector">
+              {onCreateLearningBook && <label className="nobei-client__knowledge-selector">
                 <input type="checkbox" data-testid={`nobei-course-point-${item.knowledgePointId}`}
                   checked={selectedPointIds.has(item.knowledgePointId)}
                   onChange={() => setSelectedPointIds(current => {
@@ -114,12 +116,12 @@ export function ResultSummary({ run, knowledgePoints, onUpdate, onReset, onStart
           ))}
         </div>
       )}
-      {onStartLearning && knowledgePoints.length > 0 && (
-        <section className="nobei-client__course-entry" aria-label="创建学习路径">
-          <div><span>下一步</span><strong>把已确认知识点变成可学习的路径</strong>
+      {onCreateLearningBook && knowledgePoints.length > 0 && (
+        <section className="nobei-client__course-entry" aria-label="创建学习书">
+          <div><span>下一步</span><strong>把已确认知识点整合成一本学习书</strong>
             <p>已选择 {selectedPoints.length} / {knowledgePoints.length} 个知识点</p></div>
-          <button data-testid="nobei-start-learning" type="button" disabled={selectedPoints.length === 0}
-            onClick={() => onStartLearning(selectedPoints, run.document.text)}>进入学习空间</button>
+          <button data-testid="nobei-create-learning-book" type="button" disabled={selectedPoints.length === 0}
+            onClick={() => onCreateLearningBook(selectedPoints, run.document.text)}>整理为学习书</button>
         </section>
       )}
       <button data-testid="nobei-reset" type="button" onClick={onReset}>提取另一篇</button>

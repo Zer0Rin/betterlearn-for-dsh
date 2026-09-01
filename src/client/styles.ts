@@ -277,6 +277,43 @@ export const CLIENT_CSS = `
 .nobei-client__delete-confirm > div { display: flex; gap: 8px; }
 .nobei-client__delete-confirm button, .nobei-client__destructive { margin: 0; padding: 8px 11px; border-style: solid; border-width: 1px; border-radius: 8px; background: var(--nobei-surface); }
 .nobei-client__empty-result { margin-block: 26px; padding: 18px; border-inline-start: 3px solid var(--nobei-evidence); background: var(--nobei-paper); }
+.betterlearn-gateway, .betterlearn-library { flex: 1 1 auto; min-height: 0; overflow: auto; box-sizing: border-box; padding: 26px; color: var(--nobei-ink); background: var(--nobei-paper); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+.betterlearn-gateway *, .betterlearn-library * { box-sizing: border-box; }
+.betterlearn-gateway > header { display: grid; gap: 7px; margin-block-end: 22px; }
+.betterlearn-gateway > header p, .betterlearn-library__heading p { margin: 0; color: var(--nobei-action); font: 750 0.68rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: 0.12em; text-transform: uppercase; }
+.betterlearn-gateway > header h1, .betterlearn-library__heading h1 { margin: 0; font: 780 1.65rem/1.18 ui-serif, "Songti SC", "STSong", Georgia, serif; letter-spacing: -0.025em; }
+.betterlearn-gateway > header span, .betterlearn-library__heading span { color: var(--nobei-muted); font-size: 0.8rem; line-height: 1.55; }
+.betterlearn-gateway__entries { display: grid; gap: 13px; }
+.betterlearn-gateway__entries button { position: relative; display: grid; gap: 8px; width: 100%; min-height: 190px; overflow: hidden; border: 1px solid var(--nobei-line); border-radius: 16px; padding: 19px; text-align: start; color: var(--nobei-ink); background: var(--nobei-surface); box-shadow: 0 12px 30px rgb(23 32 51 / 0.06); cursor: pointer; }
+.betterlearn-gateway__entries button::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--nobei-action); }
+.betterlearn-gateway__entries button:last-child::before { background: var(--nobei-accepted); }
+.betterlearn-gateway__entries button:hover { border-color: color-mix(in srgb, var(--nobei-action) 42%, var(--nobei-line)); transform: translateY(-1px); box-shadow: 0 16px 34px rgb(23 32 51 / 0.1); }
+.betterlearn-gateway__entries button:disabled { cursor: not-allowed; opacity: 0.58; transform: none; }
+.betterlearn-gateway__entries button > span { color: var(--nobei-action); font: 750 0.66rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
+.betterlearn-gateway__entries button:last-child > span { color: var(--nobei-accepted); }
+.betterlearn-gateway__entries strong { font: 780 1.42rem/1.15 ui-serif, "Songti SC", "STSong", Georgia, serif; }
+.betterlearn-gateway__entries p { max-width: 31ch; margin: 0; color: var(--nobei-muted); font-size: 0.82rem; line-height: 1.65; }
+.betterlearn-gateway__entries em { align-self: end; color: var(--nobei-action); font-size: 0.76rem; font-style: normal; font-weight: 750; }
+.betterlearn-gateway__entries button:last-child em { color: var(--nobei-accepted); }
+.betterlearn-library__heading { display: grid; gap: 13px; align-items: start; margin-block-end: 22px; }
+.betterlearn-library__heading > div { display: grid; gap: 6px; }
+.betterlearn-library__empty { display: grid; justify-items: start; gap: 8px; border: 1px dashed var(--nobei-line); border-radius: 15px; padding: 28px 22px; background: var(--nobei-surface); }
+.betterlearn-library__empty > span { color: var(--nobei-evidence); font: 750 0.68rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
+.betterlearn-library__empty h2 { margin: 0; font: 750 1.25rem/1.25 ui-serif, "Songti SC", Georgia, serif; }
+.betterlearn-library__empty p { margin: 0; color: var(--nobei-muted); line-height: 1.6; }
+.betterlearn-library__empty button { margin-block-start: 8px; border: 1px solid var(--nobei-action); border-radius: 9px; padding: 9px 13px; color: #FFFFFF; background: var(--nobei-action); font-weight: 750; cursor: pointer; }
+.betterlearn-library__shelf { display: grid; gap: 13px; }
+.betterlearn-library__book { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 16px; width: 100%; border: 1px solid var(--nobei-line); border-radius: 15px; padding: 14px; text-align: start; color: var(--nobei-ink); background: var(--nobei-surface); box-shadow: 0 12px 28px rgb(23 32 51 / 0.07); cursor: pointer; }
+.betterlearn-library__book:hover { border-color: color-mix(in srgb, var(--nobei-accepted) 48%, var(--nobei-line)); transform: translateY(-1px); box-shadow: 0 16px 34px rgb(23 32 51 / 0.1); }
+.betterlearn-library__cover { position: relative; display: grid; align-content: space-between; min-height: 126px; border-radius: 4px 10px 10px 4px; padding: 11px 9px 10px 15px; color: #FFFFFF; background: #2347C7; box-shadow: inset 5px 0 rgb(255 255 255 / 0.18), 6px 7px 0 color-mix(in srgb, var(--nobei-action) 12%, var(--nobei-line)); }
+.betterlearn-library__cover i { font: 750 0.65rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; font-style: normal; opacity: 0.78; }
+.betterlearn-library__cover b { font: 800 0.8rem/1.22 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: 0.08em; }
+.betterlearn-library__cover small { font-size: 0.66rem; opacity: 0.8; }
+.betterlearn-library__book-copy { display: grid; align-content: center; gap: 8px; min-width: 0; }
+.betterlearn-library__book-copy > small { color: var(--nobei-accepted); font: 700 0.67rem/1.3 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.betterlearn-library__book-copy > strong { overflow-wrap: anywhere; font: 750 1.08rem/1.3 ui-serif, "Songti SC", "STSong", Georgia, serif; }
+.betterlearn-library__book-copy > span { overflow: hidden; color: var(--nobei-muted); font-size: 0.75rem; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.betterlearn-library__book-copy > em { color: var(--nobei-action); font-size: 0.75rem; font-style: normal; font-weight: 750; }
 .betterlearn-learning {
   display: flex;
   flex: 1 1 auto;
@@ -399,6 +436,7 @@ export const CLIENT_CSS = `
   .betterlearn-floating-panel { transition-duration: 0.01ms; }
   .nobei-client *, .nobei-client *::before, .nobei-client *::after { scroll-behavior: auto; transition-duration: 0.01ms; }
   .betterlearn-learning *, .betterlearn-learning *::before, .betterlearn-learning *::after { scroll-behavior: auto; transition-duration: 0.01ms; }
+  .betterlearn-gateway *, .betterlearn-library * { transition-duration: 0.01ms; }
 }
 @container (max-width: 820px) {
   .betterlearn-learning__body, .betterlearn-learning[data-left-open="false"] .betterlearn-learning__body, .betterlearn-learning[data-right-open="false"] .betterlearn-learning__body { display: block; overflow: auto; }
@@ -433,6 +471,10 @@ export const CLIENT_CSS = `
   .nobei-client-layout[data-history-open="true"] > .nobei-history { position: static; width: auto; box-shadow: none; }
 }
 @container (max-width: 480px) {
+  .betterlearn-gateway, .betterlearn-library { padding: 20px 15px; }
+  .betterlearn-gateway__entries button { min-height: 170px; padding: 16px; }
+  .betterlearn-library__book { grid-template-columns: 76px minmax(0, 1fr); gap: 12px; padding: 11px; }
+  .betterlearn-library__cover { min-height: 112px; padding-inline-start: 12px; }
   .nobei-client { padding: 14px; font-size: 14px; line-height: 1.55; }
   .nobei-client__masthead { display: grid; gap: 10px; margin-block-end: 16px; padding-block-end: 13px; }
   .nobei-client__masthead h1 { font-size: 1.7em; }

@@ -1,5 +1,6 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BetterLearnGateway, LearningBookshelf } from '../src/client/components/LearningLibrary.js'
 import { LearningSpace } from '../src/client/components/LearningSpace.js'
 import { ResultSummary } from '../src/client/components/ResultSummary.js'
 import { createLearningPreviewCourse } from '../src/client/learning-preview.js'
@@ -91,14 +92,12 @@ body { background: #E9EDF5; }
 
 function PreviewApp() {
   const [expanded, setExpanded] = useState(true)
-  const [mode, setMode] = useState<'workbench' | 'learning'>('learning')
+  const [mode, setMode] = useState<'workbench' | 'learning'>('workbench')
+  const [area, setArea] = useState<'home' | 'knowledge' | 'library'>('home')
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
-  const [selectedPoints, setSelectedPoints] = useState(points)
-  const course = useMemo(
-    () => createLearningPreviewCourse(selectedPoints, sourceText),
-    [selectedPoints],
-  )
+  const [books, setBooks] = useState([createLearningPreviewCourse(points, sourceText)])
+  const [course, setCourse] = useState(books[0])
   const panelStyle = {
     '--betterlearn-user-width': mode === 'learning' ? '1080px' : '460px',
     '--betterlearn-user-height': mode === 'learning' ? '868px' : '720px',
@@ -118,31 +117,49 @@ function PreviewApp() {
       {!expanded ? <button className="betterlearn-floating-launcher" type="button"
         onClick={() => setExpanded(true)}>BetterLearn</button> : (
         <aside className="betterlearn-floating-panel" data-mode={mode}
+          data-area={area}
           data-left-open={leftOpen ? 'true' : 'false'} data-right-open={rightOpen ? 'true' : 'false'}
           data-compact-height="false" data-resizing="false" style={panelStyle}>
           <header className="betterlearn-floating-header">
             <div className="betterlearn-floating-header__leading">
-              <strong>{mode === 'learning' ? 'BetterLearn · 学习' : 'BetterLearn'}</strong>
+              {mode === 'workbench' && area !== 'home' && <button type="button"
+                aria-label="返回 BetterLearn 首页" onClick={() => setArea('home')}>首页</button>}
+              <strong>{mode === 'learning' ? 'BetterLearn · 学习'
+                : area === 'knowledge' ? 'BetterLearn · 知识点'
+                : area === 'library' ? 'BetterLearn · 学习空间' : 'BetterLearn'}</strong>
             </div>
             <button type="button" aria-label="收起 BetterLearn" onClick={() => setExpanded(false)}>收起</button>
           </header>
-          {mode === 'learning' ? (
-            <LearningSpace course={course} sourceText={sourceText}
+          {mode === 'learning' && course ? (
+            <LearningSpace course={course} sourceText={course.sourceText}
               leftOpen={leftOpen} rightOpen={rightOpen}
               onLeftOpenChange={setLeftOpen} onRightOpenChange={setRightOpen}
-              onExit={() => setMode('workbench')} />
-          ) : (
+              onExit={() => { setMode('workbench'); setArea('library') }} />
+          ) : null}
+          {mode === 'workbench' && area === 'home' ? (
+            <BetterLearnGateway bookCount={books.length} knowledgeAvailable
+              onOpenKnowledge={() => setArea('knowledge')} onOpenLearning={() => setArea('library')} />
+          ) : null}
+          {mode === 'workbench' && area === 'library' ? (
+            <LearningBookshelf books={books} onOpenKnowledge={() => setArea('knowledge')}
+              onOpenBook={book => {
+                setCourse(book)
+                setMode('learning')
+              }} />
+          ) : null}
+          {mode === 'workbench' && area === 'knowledge' ? (
             <div className="betterlearn-floating-workbench">
               <div className="nobei-client-layout"><div className="nobei-client">
                 <ResultSummary run={run} candidates={[]} knowledgePoints={points}
                   onUpdate={async () => true} onReset={() => undefined}
-                  onStartLearning={nextPoints => {
-                    setSelectedPoints(nextPoints)
-                    setMode('learning')
+                  onCreateLearningBook={nextPoints => {
+                    const book = createLearningPreviewCourse(nextPoints, sourceText)
+                    setBooks(current => [book, ...current.filter(item => item.courseId !== book.courseId)])
+                    setArea('library')
                   }} />
               </div></div>
             </div>
-          )}
+          ) : null}
         </aside>
       )}
     </div>
