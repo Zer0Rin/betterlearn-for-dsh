@@ -52,6 +52,7 @@ from nobei_core.repository import (
     now_iso,
     read_run_candidates,
     read_run_events,
+    read_run_history,
     read_run_knowledge_points,
     request_retry,
     require_candidate,
@@ -1053,6 +1054,20 @@ class Phase1Core:
         run_id = require_opaque_id(command['runId'], 'job')
         with self._database.read_snapshot() as con:
             return _run_snapshot(con, require_run(con, run_id), self._contract)
+
+    def list_runs(self, params: object) -> dict[str, object]:
+        _require_params(params, frozenset())
+        with self._database.read_snapshot() as con:
+            return {"runs": [{
+                "runId": row["run_id"],
+                "sourceType": "document",
+                "sourceLabel": row["filename"],
+                "status": row["status"],
+                "stage": row["stage"],
+                "updatedAt": row["updated_at"],
+                "candidateCount": row["valid_candidate_count"],
+                "knowledgePointCount": row["accepted_candidate_count"],
+            } for row in read_run_history(con)]}
 
     def list_events(self, params: object) -> dict[str, object]:
         command = _require_params(params, frozenset({'runId', 'after'}))

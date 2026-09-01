@@ -43,6 +43,7 @@ RPC_METHODS = MappingProxyType(
         "runs.submit_generation": "submit_generation",
         "runs.fail_generation": "fail_generation",
         "runs.get": "get_run",
+        "runs.list": "list_runs",
         "runs.list_events": "list_events",
         "runs.retry": "retry",
         "runs.retry_and_prepare_generation": "retry_and_prepare_generation",

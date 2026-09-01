@@ -644,6 +644,15 @@ def read_run_candidates(con, run_id):
     return [dict(r) for r in con.execute(_CANDIDATE_SELECT + 'WHERE c.run_id=? ORDER BY c.ordinal', (run_id,))]
 
 
+def read_run_history(con: sqlite3.Connection) -> list[dict[str, Any]]:
+    return [dict(row) for row in con.execute(
+        "SELECT r.id AS run_id,d.filename,r.status,r.stage,r.updated_at,"
+        "r.valid_candidate_count,r.accepted_candidate_count "
+        "FROM runs r JOIN documents d ON d.id=r.document_id "
+        "ORDER BY r.updated_at DESC,r.created_at DESC,r.id DESC"
+    )]
+
+
 def run_snapshot_counts(con: sqlite3.Connection, run_id: str) -> dict[str, int]:
     """Read transaction-maintained counters; never scan candidates or reviews."""
     row = con.execute(
