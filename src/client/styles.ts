@@ -222,6 +222,16 @@ export const CLIENT_CSS = `
 .nobei-client__knowledge-actions { display: flex; gap: 8px; }
 .nobei-client__knowledge-actions button:disabled { cursor: not-allowed; opacity: 0.55; }
 .nobei-client__knowledge-edit-error { color: var(--nobei-rejected); }
+.nobei-history__item-wrap { position: relative; border-block-end: 1px solid var(--nobei-line); }
+.nobei-history__item-wrap .nobei-history__item { border-block-end: 0; padding-inline-end: 58px; }
+.nobei-history__delete { position: absolute; inset-block-start: 10px; inset-inline-end: 8px; padding: 5px 7px; border: 1px solid color-mix(in srgb, var(--nobei-rejected) 45%, var(--nobei-line)); border-radius: 7px; color: var(--nobei-rejected); background: var(--nobei-surface); }
+.nobei-history__confirm { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px; }
+.nobei-history__confirm p { flex-basis: 100%; color: var(--nobei-rejected); font-size: 0.78rem; }
+.nobei-history__confirm button { margin: 0; padding: 5px 8px; border: 1px solid var(--nobei-line); border-radius: 7px; background: var(--nobei-surface); }
+.nobei-history__confirm button:first-of-type, .nobei-client__destructive { color: var(--nobei-rejected); border-color: color-mix(in srgb, var(--nobei-rejected) 55%, var(--nobei-line)); }
+.nobei-client__delete-confirm { display: grid; gap: 9px; margin-block-start: 18px; padding: 14px; border: 1px solid color-mix(in srgb, var(--nobei-rejected) 45%, var(--nobei-line)); border-radius: 10px; }
+.nobei-client__delete-confirm > div { display: flex; gap: 8px; }
+.nobei-client__delete-confirm button, .nobei-client__destructive { margin: 0; padding: 8px 11px; border-style: solid; border-width: 1px; border-radius: 8px; background: var(--nobei-surface); }
 .nobei-client__empty-result { margin-block: 26px; padding: 18px; border-inline-start: 3px solid var(--nobei-evidence); background: var(--nobei-paper); }
 .nobei-client__live-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (prefers-color-scheme: dark) {

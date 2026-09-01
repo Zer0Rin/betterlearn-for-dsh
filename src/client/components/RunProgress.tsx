@@ -14,6 +14,7 @@ export interface RunProgressProps {
   onRetry(): Promise<void> | void
   onReload(): Promise<void> | void
   onReset(): void
+  onTerminateDelete?(): Promise<boolean>
   previewDocument?: ClientApi['previewDocument']
 }
 
@@ -45,9 +46,12 @@ function activeStep(run: RunSnapshot | undefined): number {
 }
 
 export function RunProgress({
-  run, busy, serviceUnavailable, message, onRetry, onReload, onReset, previewDocument, progress,
+  run, busy, serviceUnavailable, message, onRetry, onReload, onReset, onTerminateDelete, previewDocument, progress,
 }: RunProgressProps) {
-  const active = activeStep(run)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteFailed, setDeleteFailed] = useState(false)
+  const activeIndex = activeStep(run)
   const failed = run?.status === 'failed_retryable' || run?.status === 'failed_terminal'
   const failureDetail = generationFailureCopy[run?.error?.code ?? ''] ?? '生成没有完成，原文仍已保存。'
   const longDocument = (run?.document.characterCount ?? 0) > 6000
@@ -56,6 +60,9 @@ export function RunProgress({
   } : undefined, [run?.document.filename, run?.document.mediaType, run?.document.text, longDocument])
   const plan = useDocumentPreview(previewInput, previewDocument)
   const maxCalls = longDocument ? plan.preview?.extractionPlan.maxCalls : 1
+  const activeRun = run !== undefined && [
+    'created', 'document_ready', 'awaiting_generation', 'generating', 'validating',
+  ].includes(run.status)
   return (
     <section className="nobei-client__progress" aria-labelledby="nobei-progress-title" aria-busy={busy}>
       <header>
@@ -66,9 +73,9 @@ export function RunProgress({
       </header>
       <ol className="nobei-client__steps">
         {steps.map((label, index) => (
-          <li key={label} data-state={index < active ? 'done' : index === active ? 'current' : 'pending'}>
-            <span aria-hidden="true">{index < active ? '✓' : index + 1}</span>
-            {failed && index === active ? '提取已停止' : label}
+          <li key={label} data-state={index < activeIndex ? 'done' : index === activeIndex ? 'current' : 'pending'}>
+            <span aria-hidden="true">{index < activeIndex ? '✓' : index + 1}</span>
+            {failed && index === activeIndex ? '提取已停止' : label}
           </li>
         ))}
       </ol>
@@ -106,6 +113,25 @@ export function RunProgress({
       {!serviceUnavailable && message === workspaceCopy.operationFailed && (
         <button type="button" disabled={busy} onClick={() => { void onReload() }}>{workspaceCopy.reconnect}</button>
       )}
+      {activeRun && onTerminateDelete && !confirmingDelete &&
+        <button className="nobei-client__destructive" data-testid="terminate-delete" type="button"
+          disabled={busy} onClick={() => { setDeleteFailed(false); setConfirmingDelete(true) }}>终止并删除</button>}
+      {activeRun && onTerminateDelete && confirmingDelete && <div className="nobei-client__delete-confirm">
+        <strong>正在进行的提取会立即停止，已生成的本任务内容也会删除。</strong>
+        {deleteFailed && <p role="alert">终止并删除失败，请重试。</p>}
+        <div>
+          <button className="nobei-client__destructive" data-testid="terminate-delete-confirm" type="button"
+            disabled={busy || deleting} onClick={() => {
+              setDeleting(true); setDeleteFailed(false)
+              void onTerminateDelete().then(deleted => {
+                setDeleting(false)
+                if (!deleted) setDeleteFailed(true)
+              })
+            }}>{deleting ? '正在终止…' : '确认终止并删除'}</button>
+          <button data-testid="terminate-delete-cancel" type="button" disabled={deleting}
+            onClick={() => setConfirmingDelete(false)}>取消</button>
+        </div>
+      </div>}
     </section>
   )
 }

@@ -22,6 +22,20 @@ function text(status: RunStatus) {
 }
 
 describe('phase1d run progress', () => {
+  test('requires inline confirmation before terminating and deleting an active task', async () => {
+    const onTerminateDelete = vi.fn(async () => true)
+    const renderer = create(<RunProgress run={run('generating')} busy={false} serviceUnavailable={false}
+      onRetry={vi.fn()} onReload={vi.fn()} onReset={vi.fn()} onTerminateDelete={onTerminateDelete} />)
+    act(() => renderer.root.findByProps({ 'data-testid': 'terminate-delete' }).props.onClick())
+    expect(onTerminateDelete).not.toHaveBeenCalled()
+    expect(JSON.stringify(renderer.toJSON())).toContain('正在进行的提取会立即停止')
+    await act(async () => {
+      renderer.root.findByProps({ 'data-testid': 'terminate-delete-confirm' }).props.onClick()
+      await Promise.resolve()
+    })
+    expect(onTerminateDelete).toHaveBeenCalledOnce()
+  })
+
   test('shows batch progress and actual response time, not a made-up heartbeat', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-08-31T08:00:00Z'))
     const props = { run: run('generating'), busy: false, serviceUnavailable: false,

@@ -56,6 +56,7 @@ export interface WorkspaceController {
   selectCandidate(candidateId: string): void
   review(candidate: CandidateSnapshot, draft: ReviewActionDraft): Promise<boolean>
   updateKnowledgePoint(point: KnowledgePointSnapshot, input: { title: string; statement: string }): Promise<boolean>
+  deleteRun(runId: string): Promise<boolean>
   reset(): void
 }
 
@@ -136,6 +137,7 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
   const commandBusy = useRef(false)
   const reviewBusy = useRef(false)
   const editBusy = useRef(false)
+  const deleteBusy = useRef(false)
   const mounted = useRef(false)
   const replayReview = useRef<(
     snapshot: RunSnapshot,
@@ -534,6 +536,29 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
     }
   }, [api, run?.status, setFailure])
 
+  const deleteRun = useCallback(async (targetRunId: string): Promise<boolean> => {
+    if (deleteBusy.current) return false
+    deleteBusy.current = true
+    setBusy(true)
+    setMessage(undefined)
+    const controller = new AbortController()
+    commandController.current?.abort()
+    commandController.current = controller
+    try {
+      await api.deleteRun(targetRunId, controller.signal)
+      if (!mounted.current || controller.signal.aborted) return false
+      if (targetRunId === currentRunId) reset()
+      setServiceUnavailable(false)
+      return true
+    } catch (error) {
+      setFailure(error)
+      return false
+    } finally {
+      deleteBusy.current = false
+      if (mounted.current) setBusy(false)
+    }
+  }, [api, currentRunId, reset, setFailure])
+
   replayReview.current = async (snapshot, availableCandidates, parentSignal) => {
     const saved = readSessionState(storage, sessionId)
     const pending = saved.pendingReview
@@ -572,6 +597,6 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
     currentRunId, screen, run, progress, events, candidates, knowledgePoints, busy, activeCandidateId,
     submittingCandidateId, serviceUnavailable, message, modelSelection,
     modelDirectoryStatus, ordinarySession, openRun, importText, retry, reload,
-    selectCandidate: setActiveCandidateId, review, updateKnowledgePoint, reset,
+    selectCandidate: setActiveCandidateId, review, updateKnowledgePoint, deleteRun, reset,
   }
 }

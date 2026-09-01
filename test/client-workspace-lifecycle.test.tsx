@@ -54,6 +54,7 @@ function fakeApi(overrides: Partial<ClientApi> = {}): ClientApi {
     listCandidates: vi.fn(async () => ({ candidates: [] })),
     reviewCandidate: vi.fn(), listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [] })),
     updateKnowledgePoint: vi.fn(),
+    deleteRun: vi.fn(),
     ...overrides,
   } as ClientApi
 }
@@ -99,6 +100,46 @@ async function flush() {
 }
 
 describe('phase1d workspace lifecycle', () => {
+  test('deletes a non-current run without changing the open workspace', async () => {
+    const storage = new MemoryStorage()
+    writeSessionState(storage, 'session-1', { version: 1, runId: 'job_current', lastEventSeq: 0 })
+    const api = fakeApi({
+      getRun: vi.fn(async () => snapshot('generating', { runId: 'job_current' })),
+      listEvents: vi.fn(async () => eventPage()),
+      deleteRun: vi.fn(async runId => ({ runId, deleted: true })),
+    })
+    const app = mount(api, storage)
+    await flush()
+    await act(async () => { expect(await app.latest.deleteRun('job_other')).toBe(true) })
+    expect(app.latest.currentRunId).toBe('job_current')
+    expect(app.latest.screen).toBe('processing')
+    expect(readSessionState(storage, 'session-1').runId).toBe('job_current')
+    act(() => app.renderer.unmount())
+  })
+
+  test('clears the current workspace only after deletion succeeds', async () => {
+    const storage = new MemoryStorage()
+    writeSessionState(storage, 'session-1', { version: 1, runId: 'job_current', lastEventSeq: 0 })
+    const deleteRun = vi.fn()
+      .mockRejectedValueOnce(new ProductApiError(503, 'CORE_UNAVAILABLE'))
+      .mockResolvedValueOnce({ runId: 'job_current', deleted: true })
+    const api = fakeApi({
+      getRun: vi.fn(async () => snapshot('generating', { runId: 'job_current' })),
+      listEvents: vi.fn(async () => eventPage()),
+      deleteRun,
+    })
+    const app = mount(api, storage)
+    await flush()
+    await act(async () => { expect(await app.latest.deleteRun('job_current')).toBe(false) })
+    expect(app.latest.currentRunId).toBe('job_current')
+    expect(readSessionState(storage, 'session-1').runId).toBe('job_current')
+
+    await act(async () => { expect(await app.latest.deleteRun('job_current')).toBe(true) })
+    expect(app.latest.currentRunId).toBeUndefined()
+    expect(app.latest.screen).toBe('import')
+    expect(readSessionState(storage, 'session-1').runId).toBeUndefined()
+    act(() => app.renderer.unmount())
+  })
   test('replaces the saved knowledge point and run snapshot after an edit', async () => {
     const storage = new MemoryStorage()
     writeSessionState(storage, 'session-1', { version: 1, runId: 'job_saved', lastEventSeq: 0 })

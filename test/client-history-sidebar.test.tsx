@@ -85,4 +85,30 @@ describe('BetterLearn extraction history sidebar', () => {
     expect(select).toHaveBeenCalledWith('job_1')
     expect(createNew).toHaveBeenCalledOnce()
   })
+
+  test('offers confirmed deletion only for inactive runs', async () => {
+    const onDelete = vi.fn(async () => true)
+    const renderer = create(<HistorySidebar runs={[
+      summary('job_active', '正在提取.md', 'generating'),
+      summary('job_review', '待审查.md', 'review_pending'),
+      summary('job_done', '已完成.md', 'completed'),
+      summary('job_failed', '失败.md', 'failed_retryable'),
+    ]} loading={false} onRetry={vi.fn()} onSelect={vi.fn()} onNew={vi.fn()} onDelete={onDelete} />)
+
+    expect(renderer.root.findAllByProps({ 'data-testid': 'history-delete-job_active' })).toHaveLength(0)
+    expect(renderer.root.findAll(node => typeof node.props['data-testid'] === 'string'
+      && node.props['data-testid'].startsWith('history-delete-job_'))).toHaveLength(3)
+    act(() => renderer.root.findByProps({ 'data-testid': 'history-delete-job_done' }).props.onClick())
+    expect(renderer.root.findByProps({ className: 'nobei-history__confirm' }).findByType('p').children.join(''))
+      .toContain('确认删除“已完成.md”')
+    act(() => renderer.root.findByProps({ 'data-testid': 'history-delete-cancel' }).props.onClick())
+    expect(onDelete).not.toHaveBeenCalled()
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'history-delete-job_done' }).props.onClick())
+    await act(async () => {
+      renderer.root.findByProps({ 'data-testid': 'history-delete-confirm' }).props.onClick()
+      await Promise.resolve()
+    })
+    expect(onDelete).toHaveBeenCalledWith('job_done')
+  })
 })

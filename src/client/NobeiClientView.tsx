@@ -31,6 +31,11 @@ export function NobeiWorkspace({
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string>()
   const [historyReload, setHistoryReload] = useState(0)
+  const deleteAndRefresh = async (runId: string): Promise<boolean> => {
+    const deleted = await workspace.deleteRun(runId)
+    if (deleted) setHistoryReload(value => value + 1)
+    return deleted
+  }
   useLayoutEffect(() => onScreenChange?.(workspace.screen), [onScreenChange, workspace.screen])
   useEffect(() => {
     if (!historyOpen) return
@@ -60,7 +65,7 @@ export function NobeiWorkspace({
       {historyOpen && <HistorySidebar runs={historyRuns} currentRunId={workspace.currentRunId}
         loading={historyLoading} error={historyError}
         onRetry={() => setHistoryReload(value => value + 1)}
-        onSelect={workspace.openRun} onNew={workspace.reset} />}
+        onSelect={workspace.openRun} onDelete={deleteAndRefresh} onNew={workspace.reset} />}
       <main className="nobei-client" data-testid="nobei-client-view">
       <header className="nobei-client__masthead" data-testid="nobei-shared-header">
         <div>
@@ -79,7 +84,8 @@ export function NobeiWorkspace({
           ordinarySession={workspace.ordinarySession} />}
         {workspace.screen === 'processing' && <RunProgress run={workspace.run} progress={workspace.progress} busy={workspace.busy}
           serviceUnavailable={workspace.serviceUnavailable} message={workspace.message}
-          previewDocument={api.previewDocument} onRetry={workspace.retry} onReload={workspace.reload} onReset={workspace.reset} />}
+          previewDocument={api.previewDocument} onRetry={workspace.retry} onReload={workspace.reload} onReset={workspace.reset}
+          onTerminateDelete={workspace.currentRunId ? () => deleteAndRefresh(workspace.currentRunId!) : undefined} />}
         {workspace.screen === 'review' && workspace.run && <ReviewWorkspace run={workspace.run}
           candidates={workspace.candidates} activeCandidateId={workspace.activeCandidateId}
           submittingCandidateId={workspace.submittingCandidateId}
