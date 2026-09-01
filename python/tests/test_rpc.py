@@ -893,6 +893,10 @@ class _MappedCore:
         self.called.append(("get_learning_course", params))
         return {"courseId": params.get("courseId")}
 
+    def delete_learning_course(self, params: object) -> dict[str, object]:
+        self.called.append(("delete_learning_course", params))
+        return {"courseId": params.get("courseId"), "deleted": True}
+
     def submit_learning_attempt(self, params: object) -> dict[str, object]:
         self.called.append(("submit_learning_attempt", params))
         return {"attempt": {"correct": True}}
@@ -957,6 +961,12 @@ def test_dispatcher_maps_run_delete() -> None:
             "get_learning_course",
             {"courseId": "course_0123456789abcdefabcd"},
             {"courseId": "course_0123456789abcdefabcd"},
+        ),
+        (
+            "learning_courses.delete",
+            "delete_learning_course",
+            {"courseId": "course_0123456789abcdefabcd"},
+            {"courseId": "course_0123456789abcdefabcd", "deleted": True},
         ),
         (
             "learning_attempts.submit",

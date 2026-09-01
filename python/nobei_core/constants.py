@@ -54,6 +54,7 @@ RPC_METHODS = MappingProxyType(
         "knowledge_points.update": "update_knowledge_point",
         "learning_courses.sync": "sync_learning_course",
         "learning_courses.get": "get_learning_course",
+        "learning_courses.delete": "delete_learning_course",
         "learning_attempts.submit": "submit_learning_attempt",
     }
 )

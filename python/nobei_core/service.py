@@ -35,7 +35,7 @@ from nobei_core.ids import (
     require_idempotency_key,
     require_opaque_id,
 )
-from nobei_core.learning import course_snapshot, submit_attempt, sync_course
+from nobei_core.learning import course_snapshot, delete_course, submit_attempt, sync_course
 from nobei_core.repository import (
     append_event,
     candidate_evidence,
@@ -1197,6 +1197,11 @@ class Phase1Core:
         course_id = require_opaque_id(command["courseId"], "course")
         with self._database.read_snapshot() as con:
             return course_snapshot(con, course_id)
+
+    def delete_learning_course(self, params: object) -> dict[str, object]:
+        command = _require_params(params, frozenset({"courseId"}))
+        with _transactional_write(self._database, "learning course delete failed") as con:
+            return delete_course(con, command["courseId"])
 
     def submit_learning_attempt(self, params: object) -> dict[str, object]:
         with _transactional_write(self._database, "learning attempt failed") as con:

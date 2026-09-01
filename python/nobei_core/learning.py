@@ -242,6 +242,12 @@ def sync_course(connection, params: object) -> str:
     return course_id
 
 
+def delete_course(connection, course_id: object) -> dict[str, object]:
+    validated = require_opaque_id(course_id, "course")
+    connection.execute("DELETE FROM learning_courses WHERE id=?", (validated,))
+    return {"courseId": validated, "deleted": True}
+
+
 def _latest_attempt(connection, assessment_id: str) -> dict[str, object] | None:
     row = connection.execute(
         "SELECT selected_option_id,correct,created_at FROM learning_attempts "

@@ -168,6 +168,49 @@ def test_course_sync_rejects_a_point_without_a_real_evidence_quote(database):
     assert database.scalar("SELECT COUNT(*) FROM learning_courses") == 0
 
 
+def test_course_delete_cascades_learning_graph_and_is_idempotent(database):
+    core = _core(database)
+    point_ids = _seed_points(database)
+    course = _sync(core, point_ids)
+    main = _find_assessment(course, 0, "main")
+    option = main["options"][0]
+    core.submit_learning_attempt(
+        {
+            "assessmentId": main["assessmentId"],
+            "optionId": option["optionId"],
+            "idempotencyKey": "idem_" + "d" * 20,
+        }
+    )
+
+    expected = {"courseId": course["courseId"], "deleted": True}
+    assert core.delete_learning_course({"courseId": course["courseId"]}) == expected
+    assert core.delete_learning_course({"courseId": course["courseId"]}) == expected
+    for table in (
+        "learning_courses",
+        "learning_units",
+        "learning_assessments",
+        "learning_attempts",
+        "learning_mastery_states",
+    ):
+        assert database.scalar(f"SELECT COUNT(*) FROM {table}") == 0
+
+
+@pytest.mark.parametrize(
+    ("params", "expected_code"),
+    (
+        ({"courseId": "course_" + "a" * 20, "extra": True}, "INVALID_PARAMS"),
+        ({"courseId": "course_bad"}, "INVALID_IDENTIFIER"),
+    ),
+)
+def test_course_delete_rejects_invalid_params(database, params, expected_code):
+    core = _core(database)
+
+    with pytest.raises(CoreProblem) as caught:
+        core.delete_learning_course(params)
+
+    assert caught.value.code == expected_code
+
+
 def test_real_attempt_drives_remediation_retest_mastery_and_is_idempotent(database):
     core = _core(database)
     point_ids = _seed_points(database)
