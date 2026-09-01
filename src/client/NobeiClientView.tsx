@@ -18,13 +18,13 @@ export interface NobeiWorkspaceProps extends ModelSelectionInput {
   scheduler?: PollScheduler
   onScreenChange?(screen: WorkspaceScreen): void
   historyOpen?: boolean
-  onCreateLearningBook?(points: KnowledgePointSnapshot[], sourceText: string): void
+  onOrganizeLearningBook?(points: KnowledgePointSnapshot[], sourceText: string): void
   conversations?: DshConversationSummary[]
 }
 
 export function NobeiWorkspace({
   sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
-  onScreenChange, historyOpen = false, onCreateLearningBook, conversations = [],
+  onScreenChange, historyOpen = false, onOrganizeLearningBook, conversations = [],
 }: NobeiWorkspaceProps) {
   const workspace = useNobeiWorkspace({
     sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
@@ -100,7 +100,7 @@ export function NobeiWorkspace({
         {workspace.screen === 'result' && workspace.run && <ResultSummary run={workspace.run}
           candidates={workspace.candidates} knowledgePoints={workspace.knowledgePoints}
           onUpdate={workspace.updateKnowledgePoint} onReset={workspace.reset}
-          onCreateLearningBook={onCreateLearningBook} />}
+          onOrganizeLearningBook={onOrganizeLearningBook} />}
       </div>
       <p className="nobei-client__live-status" aria-live="polite">{workspace.message ?? unavailableMessage ?? ''}</p>
       </main>

@@ -8,7 +8,7 @@ export interface ResultSummaryProps {
   knowledgePoints: KnowledgePointSnapshot[]
   onUpdate(point: KnowledgePointSnapshot, input: { title: string; statement: string }): Promise<boolean>
   onReset(): void
-  onCreateLearningBook?(points: KnowledgePointSnapshot[], sourceText: string): void
+  onOrganizeLearningBook?(points: KnowledgePointSnapshot[], sourceText: string): void
 }
 
 function EditableKnowledgePointCard({ item, onUpdate }: {
@@ -71,7 +71,7 @@ function EditableKnowledgePointCard({ item, onUpdate }: {
 }
 
 export function ResultSummary({
-  run, knowledgePoints, onUpdate, onReset, onCreateLearningBook,
+  run, knowledgePoints, onUpdate, onReset, onOrganizeLearningBook,
 }: ResultSummaryProps) {
   const zeroCandidates = run.counts.rawCandidates === 0
   const [selectedPointIds, setSelectedPointIds] = useState(
@@ -100,7 +100,7 @@ export function ResultSummary({
         <div className="nobei-client__knowledge-list" data-testid="nobei-knowledge-list">
           {knowledgePoints.map(item => (
             <div className="nobei-client__knowledge-selectable" key={item.knowledgePointId}>
-              {onCreateLearningBook && <label className="nobei-client__knowledge-selector">
+              {onOrganizeLearningBook && <label className="nobei-client__knowledge-selector">
                 <input type="checkbox" data-testid={`nobei-course-point-${item.knowledgePointId}`}
                   checked={selectedPointIds.has(item.knowledgePointId)}
                   onChange={() => setSelectedPointIds(current => {
@@ -109,19 +109,19 @@ export function ResultSummary({
                     else next.add(item.knowledgePointId)
                     return next
                   })} />
-                <span>加入课程</span>
+                <span>加入学习书</span>
               </label>}
               <EditableKnowledgePointCard item={item} onUpdate={onUpdate} />
             </div>
           ))}
         </div>
       )}
-      {onCreateLearningBook && knowledgePoints.length > 0 && (
+      {onOrganizeLearningBook && knowledgePoints.length > 0 && (
         <section className="nobei-client__course-entry" aria-label="创建学习书">
           <div><span>下一步</span><strong>把已确认知识点整合成一本学习书</strong>
             <p>已选择 {selectedPoints.length} / {knowledgePoints.length} 个知识点</p></div>
-          <button data-testid="nobei-create-learning-book" type="button" disabled={selectedPoints.length === 0}
-            onClick={() => onCreateLearningBook(selectedPoints, run.document.text)}>整理为学习书</button>
+          <button data-testid="nobei-organize-learning-book" type="button" disabled={selectedPoints.length === 0}
+            onClick={() => onOrganizeLearningBook(selectedPoints, run.document.text)}>整理为学习书</button>
         </section>
       )}
       <button data-testid="nobei-reset" type="button" onClick={onReset}>提取另一篇</button>

@@ -67,7 +67,7 @@ describe('interactive learning space', () => {
 
     act(() => renderer.root.findByProps({ 'aria-label': '收起课程路径' }).props.onClick())
     act(() => renderer.root.findByProps({ 'aria-label': '收起证据与掌握状态' }).props.onClick())
-    act(() => renderer.root.findByProps({ 'aria-label': '返回普通工作台' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'aria-label': '返回学习书架' }).props.onClick())
 
     expect(props.onLeftOpenChange).toHaveBeenCalledWith(false)
     expect(props.onRightOpenChange).toHaveBeenCalledWith(false)

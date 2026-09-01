@@ -22,7 +22,7 @@ describe('phase1d result summary', () => {
   test('shows Core counts, source, and only formal knowledge points', () => {
     const onReset = vi.fn()
     const renderer = create(<ResultSummary run={run()} candidates={candidates}
-      knowledgePoints={[kp]} onUpdate={vi.fn()} onReset={onReset} onCreateLearningBook={vi.fn()} />)
+      knowledgePoints={[kp]} onUpdate={vi.fn()} onReset={onReset} onOrganizeLearningBook={vi.fn()} />)
     const output = JSON.stringify(renderer.toJSON())
     for (const value of ['光合作用.md', '已接受', '已修改', '已拒绝', '正式知识点', '只展示 Core 返回的内容']) {
       expect(output).toContain(value)
@@ -36,14 +36,14 @@ describe('phase1d result summary', () => {
 
   test('treats zero candidates as a normal completed result', () => {
     const renderer = create(<ResultSummary run={run(0)} candidates={[]}
-      knowledgePoints={[]} onUpdate={vi.fn()} onReset={vi.fn()} onCreateLearningBook={vi.fn()} />)
+      knowledgePoints={[]} onUpdate={vi.fn()} onReset={vi.fn()} onOrganizeLearningBook={vi.fn()} />)
     expect(JSON.stringify(renderer.toJSON())).toContain('没有发现满足证据要求的候选知识点')
   })
 
   test('edits a completed point inline and closes only after a successful save', async () => {
     const onUpdate = vi.fn(async () => true)
     const renderer = create(<ResultSummary run={run()} candidates={candidates}
-      knowledgePoints={[kp]} onUpdate={onUpdate} onReset={vi.fn()} onCreateLearningBook={vi.fn()} />)
+      knowledgePoints={[kp]} onUpdate={onUpdate} onReset={vi.fn()} onOrganizeLearningBook={vi.fn()} />)
 
     act(() => renderer.root.findByProps({ 'aria-label': '修改“正式知识点”' }).props.onClick())
     const title = renderer.root.findByProps({ 'data-testid': 'nobei-point-title-input' })
@@ -63,7 +63,7 @@ describe('phase1d result summary', () => {
 
   test('keeps the editor open after a failed save and supports cancel', async () => {
     const renderer = create(<ResultSummary run={run()} candidates={candidates}
-      knowledgePoints={[kp]} onUpdate={vi.fn(async () => false)} onReset={vi.fn()} onCreateLearningBook={vi.fn()} />)
+      knowledgePoints={[kp]} onUpdate={vi.fn(async () => false)} onReset={vi.fn()} onOrganizeLearningBook={vi.fn()} />)
     act(() => renderer.root.findByProps({ 'aria-label': '修改“正式知识点”' }).props.onClick())
     await act(async () => {
       renderer.root.findByProps({ 'data-testid': 'nobei-point-save' }).props.onClick()
@@ -76,17 +76,17 @@ describe('phase1d result summary', () => {
 
   test('organizes only the selected formal points into a learning book', () => {
     const second = { ...kp, knowledgePointId: 'kp_2', title: '第二个知识点' }
-    const onCreateLearningBook = vi.fn()
+    const onOrganizeLearningBook = vi.fn()
     const renderer = create(<ResultSummary run={run()} candidates={candidates}
       knowledgePoints={[kp, second]} onUpdate={vi.fn()} onReset={vi.fn()}
-      onCreateLearningBook={onCreateLearningBook} />)
+      onOrganizeLearningBook={onOrganizeLearningBook} />)
 
     expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_1' }).props.checked).toBe(true)
     expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_2' }).props.checked).toBe(true)
     act(() => renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_1' }).props.onChange())
-    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-create-learning-book' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-organize-learning-book' }).props.onClick())
 
-    expect(onCreateLearningBook).toHaveBeenCalledWith([second], '正文')
+    expect(onOrganizeLearningBook).toHaveBeenCalledWith([second], '正文')
     expect(JSON.stringify(renderer.toJSON())).toContain('整理为学习书')
   })
 })

@@ -6,10 +6,16 @@ import {
 } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createClientApi } from './client-api.js'
-import { BetterLearnGateway, LearningBookshelf } from './components/LearningLibrary.js'
+import {
+  BetterLearnGateway, LearningBookComposer, LearningBookshelf,
+  type LearningBookDraftResult,
+} from './components/LearningLibrary.js'
 import { LearningSpace } from './components/LearningSpace.js'
+import {
+  createLearningBook, readLearningBooks, writeLearningBooks, type LearningBook,
+} from './learning-book-library.js'
 import { readLearningLayout, writeLearningLayout } from './learning-layout.js'
-import { createLearningPreviewCourse, type LearningPreviewCourse } from './learning-preview.js'
+import type { LearningPreviewCourse } from './learning-preview.js'
 import { NobeiWorkspace } from './NobeiClientView.js'
 import { modelSelectionInjection, type ModelDirectoryResolverPort } from './model-directory-bridge.js'
 import { ensureClientStyles } from './styles.js'
@@ -49,7 +55,12 @@ interface ResizeGesture {
 }
 
 type FloatingMode = 'workbench' | 'learning'
-type WorkbenchArea = 'home' | 'knowledge' | 'library'
+type WorkbenchArea = 'home' | 'knowledge' | 'compose' | 'library'
+
+interface LearningBookDraft {
+  points: KnowledgePointSnapshot[]
+  sourceText: string
+}
 
 function currentViewport(): ViewportSize {
   return { width: window.innerWidth, height: window.innerHeight }
@@ -64,12 +75,12 @@ interface FloatingSessionWorkspaceProps {
   api: ClientApi
   onScreenChange(screen: WorkspaceScreen): void
   historyOpen: boolean
-  onCreateLearningBook(points: KnowledgePointSnapshot[], sourceText: string): void
+  onOrganizeLearningBook(points: KnowledgePointSnapshot[], sourceText: string): void
 }
 
 function FloatingSessionWorkspace({
   sessionId, ordinarySession, conversations, modelDirectories, storage, api, onScreenChange, historyOpen,
-  onCreateLearningBook,
+  onOrganizeLearningBook,
 }: FloatingSessionWorkspaceProps) {
   const face = useMemo(() => modelSelectionInjection(modelDirectories, sessionId, ordinarySession),
     [modelDirectories, ordinarySession, sessionId])
@@ -82,7 +93,7 @@ function FloatingSessionWorkspace({
     ordinarySession={ordinarySession} modelDirectoryState={modelDirectoryState}
     loadModelSelection={face.loadModelSelection} readModelDirectory={face.readModelDirectory}
     onScreenChange={onScreenChange} historyOpen={historyOpen}
-    onCreateLearningBook={onCreateLearningBook} conversations={conversations} />
+    onOrganizeLearningBook={onOrganizeLearningBook} conversations={conversations} />
 }
 
 export function BetterLearnFloatingApp({
@@ -115,12 +126,18 @@ export function BetterLearnFloatingApp({
   const [mode, setMode] = useState<FloatingMode>('workbench')
   const [area, setArea] = useState<WorkbenchArea>('home')
   const [previewCourse, setPreviewCourse] = useState<LearningPreviewCourse>()
-  const [learningBooks, setLearningBooks] = useState<LearningPreviewCourse[]>([])
+  const [learningBooks, setLearningBooks] = useState<LearningBook[]>(
+    () => readLearningBooks(persistentSizeStorage),
+  )
+  const [bookDraft, setBookDraft] = useState<LearningBookDraft>()
+  const [newBookId, setNewBookId] = useState<string>()
+  const [storageWarning, setStorageWarning] = useState<string>()
   const [learningLayout, setLearningLayout] = useState(() => readLearningLayout(persistentSizeStorage))
   const [resizing, setResizing] = useState(false)
   const resizeGesture = useRef<ResizeGesture>()
   const sizeRef = useRef(size)
   const ordinarySize = useRef<WorkbenchSize>()
+  const bookSequence = useRef(0)
 
   useEffect(() => { sizeRef.current = size }, [size])
 
@@ -222,20 +239,41 @@ export function BetterLearnFloatingApp({
     })
   }
 
-  function createLearningBook(points: KnowledgePointSnapshot[], sourceText: string): void {
+  function organizeLearningBook(points: KnowledgePointSnapshot[], sourceText: string): void {
     if (points.length === 0) return
-    const book = createLearningPreviewCourse(points, sourceText)
-    setLearningBooks(current => [book, ...current.filter(item => item.courseId !== book.courseId)])
+    setBookDraft({ points: [...points], sourceText })
+    setHistoryOpen(false)
+    setArea('compose')
+  }
+
+  function finishLearningBook(draft: LearningBookDraftResult): void {
+    if (bookDraft === undefined) return
+    let bookId: string
+    do {
+      bookId = `book-${Date.now().toString(36)}-${(bookSequence.current++).toString(36)}`
+    } while (learningBooks.some(book => book.bookId === bookId))
+    const book = createLearningBook({
+      title: draft.title,
+      points: draft.points,
+      sourceText: bookDraft.sourceText,
+    }, { bookId, createdAt: new Date().toISOString() })
+    const nextBooks = [book, ...learningBooks]
+    setLearningBooks(nextBooks)
+    setStorageWarning(writeLearningBooks(persistentSizeStorage, nextBooks)
+      ? undefined
+      : '学习书已在本次使用中创建，但无法保存；关闭后可能丢失。')
+    setNewBookId(book.bookId)
+    setBookDraft(undefined)
     setHistoryOpen(false)
     setArea('library')
   }
 
-  function enterLearning(book: LearningPreviewCourse): void {
+  function enterLearning(book: LearningBook): void {
     ordinarySize.current = sizeRef.current
     const next = clampWorkbenchSize({ width: 1080, height: viewport.height - 32 }, viewport)
     sizeRef.current = next
     setSize(next)
-    setPreviewCourse(book)
+    setPreviewCourse(book.course)
     setHistoryOpen(false)
     setMode('learning')
   }
@@ -300,6 +338,7 @@ export function BetterLearnFloatingApp({
           onClick={() => setHistoryOpen(value => !value)}>历史</button>}
         <strong>{mode === 'learning' ? 'BetterLearn · 学习'
           : area === 'knowledge' ? 'BetterLearn · 知识点'
+          : area === 'compose' ? 'BetterLearn · 整理学习书'
           : area === 'library' ? 'BetterLearn · 学习空间' : 'BetterLearn'}</strong>
       </div>
       <button type="button" aria-label="收起 BetterLearn" onClick={collapsePanel}>收起</button>
@@ -309,8 +348,13 @@ export function BetterLearnFloatingApp({
         onOpenKnowledge={() => openArea('knowledge')} onOpenLearning={() => openArea('library')} />
       : null}
     {mode === 'workbench' && area === 'library'
-      ? <LearningBookshelf books={learningBooks} onOpenBook={enterLearning}
+      ? <LearningBookshelf books={learningBooks} newBookId={newBookId} storageWarning={storageWarning}
+        onOpenBook={enterLearning}
         onOpenKnowledge={() => openArea('knowledge')} />
+      : null}
+    {mode === 'workbench' && area === 'compose' && bookDraft !== undefined
+      ? <LearningBookComposer points={bookDraft.points} onCreate={finishLearningBook}
+        onCancel={() => { setBookDraft(undefined); openArea('knowledge') }} />
       : null}
     {mode === 'learning' && previewCourse !== undefined
       ? <LearningSpace course={previewCourse} sourceText={previewCourse.sourceText}
@@ -326,7 +370,7 @@ export function BetterLearnFloatingApp({
             conversations={conversations}
             modelDirectories={modelDirectories} storage={storage} api={clientApi}
             onScreenChange={setScreen} historyOpen={historyOpen}
-            onCreateLearningBook={createLearningBook} />
+            onOrganizeLearningBook={organizeLearningBook} />
         </div>
       : null}
   </aside>

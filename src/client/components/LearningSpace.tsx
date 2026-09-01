@@ -215,7 +215,7 @@ export function LearningSpace({
             aria-expanded={rightOpen} onClick={() => onRightOpenChange(!rightOpen)}>证据</button>
         </div>
         <p><span>学习进度</span><strong>{course.progress.completed} / {course.progress.total}</strong></p>
-        <button type="button" aria-label="返回普通工作台" onClick={onExit}>恢复普通尺寸</button>
+        <button type="button" aria-label="返回学习书架" onClick={onExit}>返回</button>
       </header>
       <div className="betterlearn-learning__body">
         {leftOpen && <UnitPath course={course} activeUnitId={activeUnit?.unitId} onSelect={setActiveUnitId} />}

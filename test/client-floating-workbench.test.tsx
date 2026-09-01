@@ -2,6 +2,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { BetterLearnFloatingApp } from '../src/client/floating-workbench.js'
 import { LEARNING_LAYOUT_STORAGE_KEY } from '../src/client/learning-layout.js'
+import { LEARNING_BOOK_STORAGE_KEY } from '../src/client/learning-book-library.js'
 import { sessionKey } from '../src/client/session-state.js'
 import type { ClientApi, KnowledgePointSnapshot, RunSnapshot } from '../src/client/types.js'
 import { WORKBENCH_SIZE_STORAGE_KEY } from '../src/client/workbench-size.js'
@@ -352,18 +353,27 @@ describe('BetterLearn floating workbench shell', () => {
     expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' }).props.style)
       .toMatchObject({ '--betterlearn-user-width': '460px', '--betterlearn-user-height': '720px' })
 
-    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-create-learning-book' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-organize-learning-book' }).props.onClick())
 
     let panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
     expect(panel.props['data-mode']).toBe('workbench')
-    expect(panel.props['data-area']).toBe('library')
+    expect(panel.props['data-area']).toBe('compose')
     expect(panel.props.style).toMatchObject({
       '--betterlearn-user-width': '460px', '--betterlearn-user-height': '720px',
     })
+    expect(renderer.root.findByProps({ 'data-testid': 'learning-book-composer' })).toBeDefined()
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-title' }).props
+      .onChange({ currentTarget: { value: '闭包入门' } }))
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-create' }).props.onClick())
+
+    panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+    expect(panel.props['data-area']).toBe('library')
     expect(renderer.root.findByProps({ 'data-testid': 'learning-bookshelf' })).toBeDefined()
     expect(renderer.root.findAllByProps({ 'data-testid': 'learning-lesson' })).toHaveLength(0)
 
-    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-preview-kp_closure' }).props.onClick())
+    const newBook = renderer.root.findByProps({ 'data-new': 'true' })
+    expect(JSON.stringify(renderer.toJSON())).toContain('闭包入门')
+    act(() => newBook.props.onClick())
     panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
     expect(panel.props['data-mode']).toBe('learning')
     expect(panel.props.style).toMatchObject({
@@ -375,7 +385,7 @@ describe('BetterLearn floating workbench shell', () => {
     act(() => renderer.root.findByProps({ 'aria-label': '收起课程路径' }).props.onClick())
     expect(JSON.parse(sizeStorage.getItem(LEARNING_LAYOUT_STORAGE_KEY)!)).toMatchObject({ leftOpen: false })
 
-    act(() => renderer.root.findByProps({ 'aria-label': '返回普通工作台' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'aria-label': '返回学习书架' }).props.onClick())
     panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
     expect(panel.props['data-mode']).toBe('workbench')
     expect(panel.props['data-area']).toBe('library')
@@ -385,5 +395,30 @@ describe('BetterLearn floating workbench shell', () => {
     })
     expect(JSON.parse(sizeStorage.getItem(WORKBENCH_SIZE_STORAGE_KEY)!).result)
       .toEqual({ width: 460, height: 720 })
+
+    act(() => renderer.root.findByProps({ 'aria-label': '返回 BetterLearn 首页' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-knowledge-entry' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-organize-learning-book' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-title' }).props
+      .onChange({ currentTarget: { value: '闭包复习' } }))
+    act(() => renderer.root.findByProps({ 'data-testid': 'learning-book-create' }).props.onClick())
+
+    const cards = renderer.root.findAll(node => node.props.className === 'betterlearn-library__book')
+    expect(cards).toHaveLength(2)
+    expect(cards[0].props['data-new']).toBe('true')
+    const persisted = JSON.parse(sizeStorage.getItem(LEARNING_BOOK_STORAGE_KEY)!)
+    expect(persisted.books).toHaveLength(2)
+    expect(new Set(persisted.books.map((book: { bookId: string }) => book.bookId)).size).toBe(2)
+
+    act(() => renderer.unmount())
+    await act(async () => {
+      renderer = create(<BetterLearnFloatingApp
+        sessions={{ list: source, subagentAddress: () => undefined } as never}
+        modelDirectories={modelDirectories} storage={sessionStorage} sizeStorage={sizeStorage} api={resultApi} />)
+      await Promise.resolve()
+    })
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-library-entry' }).props.onClick())
+    expect(renderer.root.findAll(node => node.props.className === 'betterlearn-library__book')).toHaveLength(2)
   })
 })
