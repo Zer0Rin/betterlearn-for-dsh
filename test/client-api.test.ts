@@ -75,6 +75,12 @@ describe('phase1d Client API', () => {
     const candidateId = 'cand_0123456789abcdefabcd'
     const idempotencyKey = `idem_${'a'.repeat(20)}`
 
+    await (api as unknown as { listRuns(signal?: AbortSignal): Promise<unknown> })
+      .listRuns(controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith('/nobei/v1/runs', {
+      method: 'GET', headers: {}, signal: controller.signal,
+    })
+
     await api.importText({ filename: '教材.md', mediaType: 'text/markdown', text: '正文' }, controller.signal)
     expect(fetchMock).toHaveBeenLastCalledWith('/nobei/v1/imports', {
       method: 'POST',

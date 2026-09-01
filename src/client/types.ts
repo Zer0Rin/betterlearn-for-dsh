@@ -8,6 +8,27 @@ export type RunStatus =
   | 'failed_retryable'
   | 'failed_terminal'
 
+export type RunHistoryStatus =
+  | 'created'
+  | 'document_ready'
+  | 'awaiting_generation'
+  | RunStatus
+
+export interface RunHistorySummary {
+  runId: string
+  sourceType: 'document'
+  sourceLabel: string
+  status: RunHistoryStatus
+  stage: string
+  updatedAt: string
+  candidateCount: number
+  knowledgePointCount: number
+}
+
+export interface RunHistoryResult {
+  runs: RunHistorySummary[]
+}
+
 export interface RunCounts {
   rawCandidates: number
   validCandidates: number
@@ -141,6 +162,7 @@ export interface ClientApi {
   previewDocument?(input: DocumentPreviewRequest, signal?: AbortSignal): Promise<DocumentPreview>
   watchRun?(runId: string, onChange: () => void, onProgress?: (progress: GenerationProgress) => void): () => void
   getProgress?(runId: string, signal?: AbortSignal): Promise<GenerationProgress | null>
+  listRuns(signal?: AbortSignal): Promise<RunHistoryResult>
   importText(input: ImportTextRequest, signal?: AbortSignal): Promise<GenerationLaunch>
   getRun(runId: string, signal?: AbortSignal): Promise<RunSnapshot>
   listEvents(runId: string, after: number, signal?: AbortSignal): Promise<EventPage>

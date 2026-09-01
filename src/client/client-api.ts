@@ -9,6 +9,7 @@ import type {
   RunSnapshot,
   CandidateSnapshot,
   KnowledgePointSnapshot,
+  RunHistoryResult,
 } from './types.js'
 import type { GenerationProgress } from '../generation-progress.js'
 
@@ -72,6 +73,9 @@ export function createClientApi(): ClientApi {
       // Polling continues independently; a broken SSE connection is not a run failure.
       stream.onerror = () => stream.close()
       return () => stream.close()
+    },
+    listRuns(signal) {
+      return get<RunHistoryResult>('/nobei/v1/runs', signal)
     },
     importText(input: ImportTextRequest, signal?: AbortSignal) {
       return post<GenerationLaunch>('/nobei/v1/imports', input, signal)
