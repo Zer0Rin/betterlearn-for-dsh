@@ -149,3 +149,15 @@ Python测试从463变为334，净减少129项。P2移除了v8双重投影、每�
 证据位于`evidence/config-injection/`：`focused-tests.txt`、`pack.txt`、`final-result.json`、页面快照和截图。本次GO只覆盖这两项整理及其确定性闭环；没有重跑TS/Python全量、P3/P4完整验收或真实模型质量验证。
 
 本机已经维护CLI先备份再升级至0.0.4并重启。实际Host/Client与构建产物一致，升级前后11张产品表及备份逐表一致，53个知识点与53条审核记录保留，模型请求数保持12次。安装配置除包路径外不变，已完成任务仍为completed、瞬时进度为null。见同目录`before-upgrade.json`、`after-upgrade.json`、`backup-snapshot.json`与`upgrade-result.json`。
+
+## DSH 历史对话提取（2026-09-01）
+
+本次增加独立的 DSH 对话选择入口：用户可搜索并多选普通会话，查看完整合并预览，再创建一个提取任务。Host 只接受原始追加事件中的用户文字和模型可见文字，明确排除 system prompt、reasoning、工具调用与结果、插件注入、替换面、图片/未知块和子 Agent 会话。最多选择50个会话，合并正文上限512KiB；预览与提交之间使用正文摘要检查变化，不截断、不绕过重新预览。
+
+确定性验证结果：
+
+- `pnpm test` 完整构建通过，63个 TypeScript 测试文件、753/753项通过；
+- `pnpm test:phase1b-python` 372/372项通过；
+- 对话选择、搜索、多选、完整安全预览、409重新预览、会话刷新、模型继承和任务接管的前端定向测试62/62项通过；
+- Core发布包结构校验通过（`001_product.sql`，132个包条目）；
+- 没有调用真实模型，没有修改正式数据库，也没有把确定性测试写成真实 DSH 浏览器验收；实际交互效果留给用户在专用 profile 中试用并反馈。

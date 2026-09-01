@@ -54,6 +54,8 @@ describe('phase1 external bundle package', () => {
       '@deepseek-ai/dsh-client-runtime': '0.1.0-rc.7 || 0.1.0-rc.8',
       '@deepseek-ai/dsh-client-ui-conversation': '0.1.0-rc.7 || 0.1.0-rc.8',
       '@deepseek-ai/dsh-client-ui-model-selection': '0.1.0-rc.7 || 0.1.0-rc.8',
+      '@deepseek-ai/dsh-session-query': '0.1.0-rc.7 || 0.1.0-rc.8',
+      '@deepseek-ai/dsh-session-title': '0.1.0-rc.7 || 0.1.0-rc.8',
     })
     expect(pkg.devDependencies).toMatchObject({
       '@deepseek-ai/dsh-client-modules': '0.1.0-rc.7',
@@ -61,6 +63,8 @@ describe('phase1 external bundle package', () => {
       '@deepseek-ai/dsh-client-ui-conversation': '0.1.0-rc.7',
       '@deepseek-ai/dsh-client-ui-model-selection': '0.1.0-rc.7',
       '@deepseek-ai/dsh-client-ui-slots': '0.1.0-rc.7',
+      '@deepseek-ai/dsh-session-query': '0.1.0-rc.7',
+      '@deepseek-ai/dsh-session-title': '0.1.0-rc.7',
       '@playwright/test': '1.62.1',
       '@types/react': '18.3.1',
       '@types/react-test-renderer': '18.3.0',
