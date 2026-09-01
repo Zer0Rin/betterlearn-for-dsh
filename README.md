@@ -73,6 +73,10 @@ corepack pnpm@11.23.0 pack:acceptance
 
 验收要求与分阶段结果见 [交付验收](docs/delivery-plan.md)。P2/P3开发期的旧fixture库不作为升级源；首次交付从最终产品schema的空目录开始，之后同schema升级保留数据。
 
+## 许可证
+
+BetterLearn for DSH 采用 [MIT License](LICENSE) 开源。当前发布渠道仍是维护CLI安装预构建tarball；公开Git仓库用于查看、审计和协作，不承诺通过Git源码或npm registry直接安装。
+
 ## Model Experience
 
 ### 规划与候选提取
@@ -97,7 +101,7 @@ L1每次提取最多1次模型调用；L2/L3包含规划和分批提取，界面
 
 ## Known Limitations and Deferred Work
 
-- 当前只支持单机单用户macOS/Linux上的DSH Web插件，安装需维护CLI完成Python与数据目录初始化；预构建tarball是当前交付渠道，不承诺npm包名或Git源码直接安装。许可证与公开发布信息留到发布前明确。
+- 当前只支持单机单用户macOS/Linux上的DSH Web插件，安装需维护CLI完成Python与数据目录初始化；预构建tarball是当前交付渠道，不承诺npm包名或Git源码直接安装。公开仓库采用MIT许可证，但源码公开不改变已经验收的安装路径。
 - `conversation.view`注册的是独立标签页，不覆盖其他视图；但随包的patch会修改专用profile中的工具、重试和workflow设置。不要把它直接叠加到日常编码profile；具体影响见 [专用profile限制](docs/install.md#专用-profile-的能力范围)。
 - PDF只支持文字层，无OCR；证据定位针对保存的规范化正文，不保证原PDF版面坐标。正文上限512KiB、PDF文件上限5MiB；不保存原PDF。
 - 每次提取调用最多20条候选，长文按多批汇总；精确quote匹配不等于知识点语义正确或覆盖完整，仍需人工审核。fake验收和有限真实试用不代表任意模型、任意材料的质量保证，已验证范围见 [验证说明](docs/validation.md)。
