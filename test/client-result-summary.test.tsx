@@ -89,4 +89,58 @@ describe('phase1d result summary', () => {
     expect(onOrganizeLearningBook).toHaveBeenCalledWith([second], '正文')
     expect(JSON.stringify(renderer.toJSON())).toContain('整理为学习书')
   })
+
+  test('defaults the master selector to all points and toggles the whole selection', () => {
+    const second = { ...kp, knowledgePointId: 'kp_2', title: '第二个知识点' }
+    const renderer = create(<ResultSummary run={run()} candidates={candidates}
+      knowledgePoints={[kp, second]} onUpdate={vi.fn()} onReset={vi.fn()}
+      onOrganizeLearningBook={vi.fn()} />)
+
+    const master = () => renderer.root.findByProps({ 'data-testid': 'nobei-course-select-all' })
+    expect(master().props.checked).toBe(true)
+    expect(master().props['aria-checked']).toBe(true)
+    expect(renderer.root.findByProps({ className: 'nobei-client__knowledge-selection-bar' })
+      .findByType('em').children.join('')).toBe('已选择 2 / 2')
+
+    act(() => master().props.onChange())
+    expect(master().props.checked).toBe(false)
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_1' }).props.checked).toBe(false)
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_2' }).props.checked).toBe(false)
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-organize-learning-book' }).props.disabled).toBe(true)
+
+    act(() => master().props.onChange())
+    expect(master().props.checked).toBe(true)
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_1' }).props.checked).toBe(true)
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_2' }).props.checked).toBe(true)
+  })
+
+  test('shows a mixed master state after the user chooses individual points', () => {
+    const second = { ...kp, knowledgePointId: 'kp_2', title: '第二个知识点' }
+    const renderer = create(<ResultSummary run={run()} candidates={candidates}
+      knowledgePoints={[kp, second]} onUpdate={vi.fn()} onReset={vi.fn()}
+      onOrganizeLearningBook={vi.fn()} />)
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_1' }).props.onChange())
+    const master = renderer.root.findByProps({ 'data-testid': 'nobei-course-select-all' })
+    expect(master.props.checked).toBe(false)
+    expect(master.props['aria-checked']).toBe('mixed')
+    expect(renderer.root.findByProps({ className: 'nobei-client__knowledge-selection-bar' })
+      .findByType('em').children.join('')).toBe('已选择 1 / 2')
+  })
+
+  test('defaults back to all selected when a different extraction result opens', () => {
+    const renderer = create(<ResultSummary run={run()} candidates={candidates}
+      knowledgePoints={[kp]} onUpdate={vi.fn()} onReset={vi.fn()}
+      onOrganizeLearningBook={vi.fn()} />)
+    act(() => renderer.root.findByProps({ 'data-testid': 'nobei-course-select-all' }).props.onChange())
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-select-all' }).props.checked).toBe(false)
+
+    const nextPoint = { ...kp, knowledgePointId: 'kp_next', title: '另一份资料的知识点' }
+    act(() => renderer.update(<ResultSummary run={{ ...run(), runId: 'job_2' }} candidates={candidates}
+      knowledgePoints={[nextPoint]} onUpdate={vi.fn()} onReset={vi.fn()}
+      onOrganizeLearningBook={vi.fn()} />))
+
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-select-all' }).props.checked).toBe(true)
+    expect(renderer.root.findByProps({ 'data-testid': 'nobei-course-point-kp_next' }).props.checked).toBe(true)
+  })
 })

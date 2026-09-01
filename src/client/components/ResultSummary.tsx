@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CandidateSnapshot, KnowledgePointSnapshot, RunSnapshot } from '../types.js'
 import { modelSelectionLabel } from '../model-directory-bridge.js'
 
@@ -77,7 +77,20 @@ export function ResultSummary({
   const [selectedPointIds, setSelectedPointIds] = useState(
     () => new Set(knowledgePoints.map(point => point.knowledgePointId)),
   )
+  const pointSelectionKey = knowledgePoints.map(point => point.knowledgePointId).join('\u0000')
+  const previousPointSelectionKey = useRef(pointSelectionKey)
+  useEffect(() => {
+    if (previousPointSelectionKey.current === pointSelectionKey) return
+    previousPointSelectionKey.current = pointSelectionKey
+    setSelectedPointIds(new Set(knowledgePoints.map(point => point.knowledgePointId)))
+  }, [pointSelectionKey])
   const selectedPoints = knowledgePoints.filter(point => selectedPointIds.has(point.knowledgePointId))
+  const allPointsSelected = knowledgePoints.length > 0 && selectedPoints.length === knowledgePoints.length
+  const somePointsSelected = selectedPoints.length > 0 && !allPointsSelected
+  const selectAllRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = somePointsSelected
+  }, [somePointsSelected])
   return (
     <section className="nobei-client__result" aria-labelledby="nobei-result-title">
       <div className="nobei-client__result-meta" data-testid="nobei-result-meta">
@@ -98,6 +111,15 @@ export function ResultSummary({
         </p>
       ) : (
         <div className="nobei-client__knowledge-list" data-testid="nobei-knowledge-list">
+          {onOrganizeLearningBook && <label className="nobei-client__knowledge-selection-bar">
+            <input ref={selectAllRef} type="checkbox" data-testid="nobei-course-select-all"
+              checked={allPointsSelected} aria-checked={somePointsSelected ? 'mixed' : allPointsSelected}
+              onChange={() => setSelectedPointIds(allPointsSelected
+                ? new Set()
+                : new Set(knowledgePoints.map(point => point.knowledgePointId)))} />
+            <span>全选</span>
+            <em>已选择 {selectedPoints.length} / {knowledgePoints.length}</em>
+          </label>}
           {knowledgePoints.map(item => (
             <div className="nobei-client__knowledge-selectable" key={item.knowledgePointId}>
               {onOrganizeLearningBook && <label className="nobei-client__knowledge-selector">

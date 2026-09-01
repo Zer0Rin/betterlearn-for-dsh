@@ -245,6 +245,9 @@ export const CLIENT_CSS = `
 .nobei-client__result-counts dt { color: var(--nobei-muted); font-size: 0.8rem; }
 .nobei-client__result-counts dd { margin: 0; font-family: ui-serif, "Songti SC", serif; font-size: 1.8rem; }
 .nobei-client__knowledge-list { display: grid; gap: 12px; }
+.nobei-client__knowledge-selection-bar { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--nobei-line); border-radius: 11px; color: var(--nobei-text); background: color-mix(in srgb, var(--nobei-action) 5%, var(--nobei-paper)); font-size: 0.8rem; font-weight: 750; cursor: pointer; }
+.nobei-client__knowledge-selection-bar input { width: 16px; height: 16px; margin: 0; accent-color: var(--nobei-action); }
+.nobei-client__knowledge-selection-bar em { margin-inline-start: auto; color: var(--nobei-muted); font-size: 0.72rem; font-style: normal; font-weight: 650; }
 .nobei-client__knowledge-selectable { overflow: hidden; border: 1px solid var(--nobei-line); border-radius: 13px; background: var(--nobei-paper); }
 .nobei-client__knowledge-selector { display: flex; align-items: center; justify-content: flex-end; gap: 7px; padding: 8px 12px; border-block-end: 1px solid var(--nobei-line); color: var(--nobei-muted); font-size: 0.76rem; font-weight: 700; cursor: pointer; }
 .nobei-client__knowledge-selector input { width: 15px; height: 15px; margin: 0; accent-color: var(--nobei-action); }
