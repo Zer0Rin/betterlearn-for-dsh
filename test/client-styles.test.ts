@@ -48,6 +48,13 @@ describe('phase1d scoped styles', () => {
     expect(CLIENT_CSS).toContain('font-size: 13px')
     expect(CLIENT_CSS).toContain('.nobei-client__masthead-intro, .nobei-client__active-model, .nobei-client__result-meta { display: none; }')
     expect(CLIENT_CSS).toContain('.betterlearn-floating-panel[data-compact-height="true"] .nobei-client__masthead')
+    expect(CLIENT_CSS).toContain('.nobei-client__course-entry')
+    expect(CLIENT_CSS).toContain('.betterlearn-learning__body')
+    expect(CLIENT_CSS).toContain('grid-template-columns: 224px minmax(0, 1fr) 250px')
+    expect(CLIENT_CSS).toContain('.betterlearn-learning__path ol::before')
+    expect(CLIENT_CSS).toContain('.betterlearn-learning__evidence blockquote')
+    expect(CLIENT_CSS).toContain('@container (max-width: 820px)')
+    expect(CLIENT_CSS).toContain('.betterlearn-learning[data-left-open="false"][data-right-open="false"]')
     const compactFontSizes = [...CLIENT_CSS.matchAll(/\.nobei-client \{[^}]*font-size:\s*(\d+)px/g)]
       .map(match => Number(match[1]))
     expect(compactFontSizes.length).toBeGreaterThan(0)
@@ -65,7 +72,7 @@ describe('phase1d scoped styles', () => {
     for (const block of selectorBlocks) {
       const selectors = block.replace(/\{$/, '').split(',')
       for (const selector of selectors) {
-        expect(selector.trim()).toMatch(/^(\.nobei-client|\.nobei-history|\.betterlearn-floating)/)
+        expect(selector.trim()).toMatch(/^(\.nobei-client|\.nobei-history|\.betterlearn-floating|\.betterlearn-learning)/)
       }
     }
   })
