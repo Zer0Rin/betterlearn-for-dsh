@@ -1,15 +1,12 @@
-import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { useEffect, useMemo } from 'react'
-import { createClientApi } from './client-api.js'
+import { useEffect } from 'react'
 import { ImportWorkspace } from './components/ImportWorkspace.js'
 import { ResultSummary } from './components/ResultSummary.js'
 import { ReviewWorkspace } from './components/ReviewWorkspace.js'
 import { RunProgress } from './components/RunProgress.js'
 import type { PollScheduler } from './poll-run.js'
-import { modelSelectionLabel, type ModelSelectionInput, type ModelSelectionProps } from './model-directory-bridge.js'
-import { ensureClientStyles } from './styles.js'
+import { modelSelectionLabel, type ModelSelectionInput } from './model-directory-bridge.js'
 import type { ClientApi } from './types.js'
-import { useNobeiWorkspace } from './use-nobei-workspace.js'
+import { useNobeiWorkspace, type WorkspaceScreen } from './use-nobei-workspace.js'
 import { workspaceCopy } from './workspace-copy.js'
 
 export interface NobeiWorkspaceProps extends ModelSelectionInput {
@@ -17,15 +14,18 @@ export interface NobeiWorkspaceProps extends ModelSelectionInput {
   api: ClientApi
   storage: Storage
   scheduler?: PollScheduler
+  onScreenChange?(screen: WorkspaceScreen): void
 }
 
 export function NobeiWorkspace({
   sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
+  onScreenChange,
 }: NobeiWorkspaceProps) {
   const workspace = useNobeiWorkspace({
     sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
   })
   const sourceName = workspace.run?.document.filename ?? '新的学习材料'
+  useEffect(() => onScreenChange?.(workspace.screen), [onScreenChange, workspace.screen])
   const activeModel = workspace.run?.modelSelection ?? workspace.modelSelection
   const unavailableMessage = workspace.serviceUnavailable ? workspaceCopy.unavailable : undefined
   const operationError = unavailableMessage
@@ -65,20 +65,4 @@ export function NobeiWorkspace({
       <p className="nobei-client__live-status" aria-live="polite">{workspace.message ?? unavailableMessage ?? ''}</p>
     </main>
   )
-}
-
-export type NobeiClientViewProps = ConvViewProps & ModelSelectionProps
-
-export function NobeiClientView(props: NobeiClientViewProps) {
-  const api = useMemo(() => createClientApi(), [])
-  const modelDirectoryState = props.useModelDirectory(state => state)
-  useEffect(() => ensureClientStyles(document), [])
-  return <NobeiWorkspace sessionId={String(props.sessionId)} api={api} storage={window.sessionStorage}
-    modelDirectoryState={modelDirectoryState} loadModelSelection={props.loadModelSelection}
-    readModelDirectory={props.readModelDirectory} ordinarySession={props.ordinarySession} />
-}
-
-export function NobeiBlankSessionDock(props: NobeiClientViewProps & { session: { blank: boolean } }) {
-  if (!props.session.blank) return null
-  return <NobeiClientView {...props} />
 }

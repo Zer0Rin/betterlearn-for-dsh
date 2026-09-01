@@ -1,8 +1,7 @@
-import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { ProductApiError } from '../src/client/client-api.js'
-import { ViewWithDirectory as NobeiClientView, WorkspaceWithDirectory as NobeiWorkspace } from './helpers/model-selection.js'
+import { WorkspaceWithDirectory as NobeiWorkspace } from './helpers/model-selection.js'
 import { sessionKey, writeSessionState } from '../src/client/session-state.js'
 import type { CandidateSnapshot, ClientApi, RunSnapshot } from '../src/client/types.js'
 
@@ -216,29 +215,19 @@ describe('phase1d composed workspace', () => {
     }
   })
 
-  test('wires the DSH session identity to browser sessionStorage', () => {
+  test('reports the active workspace screen to a floating shell', async () => {
+    const onScreenChange = vi.fn()
     const storage = new MemoryStorage()
-    const styles: unknown[] = []
-    const fakeDocument = {
-      head: { appendChild(node: unknown) { styles.push(node) } },
-      querySelector: vi.fn(() => null),
-      createElement: vi.fn(() => ({ setAttribute() {}, textContent: '' })),
-      visibilityState: 'visible',
-      addEventListener() {}, removeEventListener() {},
-    }
-    vi.stubGlobal('window', { sessionStorage: storage, setTimeout, clearTimeout })
-    vi.stubGlobal('document', fakeDocument)
-    let first!: ReactTestRenderer
-    let second!: ReactTestRenderer
-    act(() => {
-      first = create(<NobeiClientView {...({ sessionId: 'session-a' } as ConvViewProps)}
-        modelDirectories={modelDirectories} ordinarySession />)
-      second = create(<NobeiClientView {...({ sessionId: 'session-b' } as ConvViewProps)}
-        modelDirectories={modelDirectories} ordinarySession />)
+    writeSessionState(storage, 'session', { version: 1, runId: 'job_saved', lastEventSeq: 0 })
+    let renderer!: ReactTestRenderer
+    await act(async () => {
+      renderer = create(<NobeiWorkspace sessionId="session" api={apiFor('review_pending')}
+        storage={storage} scheduler={terminalScheduler} modelDirectories={modelDirectories}
+        ordinarySession onScreenChange={onScreenChange} />)
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
     })
-    expect(storage.getItem).toHaveBeenCalledWith(sessionKey('session-a'))
-    expect(storage.getItem).toHaveBeenCalledWith(sessionKey('session-b'))
-    expect(sessionKey('session-a')).not.toBe(sessionKey('session-b'))
-    act(() => { first.unmount(); second.unmount() })
+    await vi.waitFor(() => expect(onScreenChange).toHaveBeenLastCalledWith('review'))
+    act(() => renderer.unmount())
   })
+
 })

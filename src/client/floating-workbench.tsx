@@ -1,9 +1,88 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { ISessions } from '@deepseek-ai/dsh-client-runtime/client'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
+import { createClientApi } from './client-api.js'
+import { NobeiWorkspace } from './NobeiClientView.js'
+import { modelSelectionInjection, type ModelDirectoryResolverPort } from './model-directory-bridge.js'
 import { ensureClientStyles } from './styles.js'
+import type { ClientApi } from './types.js'
+import type { WorkspaceScreen } from './use-nobei-workspace.js'
 
-export function BetterLearnFloatingApp() {
-  return <button data-testid="betterlearn-launcher" type="button" aria-expanded="false">BetterLearn</button>
+export type WorkbenchScreen = 'empty' | WorkspaceScreen
+
+export interface BetterLearnFloatingAppProps {
+  sessions: Pick<ISessions, 'list' | 'subagentAddress'>
+  modelDirectories: ModelDirectoryResolverPort
+  storage: Storage
+  api?: ClientApi
+}
+
+interface FloatingSessionWorkspaceProps {
+  sessionId: string
+  sessions: Pick<ISessions, 'subagentAddress'>
+  modelDirectories: ModelDirectoryResolverPort
+  storage: Storage
+  api: ClientApi
+  onScreenChange(screen: WorkspaceScreen): void
+}
+
+function FloatingSessionWorkspace({
+  sessionId, sessions, modelDirectories, storage, api, onScreenChange,
+}: FloatingSessionWorkspaceProps) {
+  const ordinarySession = sessions.subagentAddress(sessionId as never) === undefined
+  const face = useMemo(() => modelSelectionInjection(modelDirectories, sessionId, ordinarySession),
+    [modelDirectories, ordinarySession, sessionId])
+  const modelDirectoryState = useSyncExternalStore(
+    face.hooks.modelDirectory.subscribe,
+    face.hooks.modelDirectory.getSnapshot,
+    face.hooks.modelDirectory.getSnapshot,
+  )
+  return <NobeiWorkspace sessionId={sessionId} api={api} storage={storage}
+    ordinarySession={ordinarySession} modelDirectoryState={modelDirectoryState}
+    loadModelSelection={face.loadModelSelection} readModelDirectory={face.readModelDirectory}
+    onScreenChange={onScreenChange} />
+}
+
+export function BetterLearnFloatingApp({ sessions, modelDirectories, storage, api }: BetterLearnFloatingAppProps) {
+  const sessionState = useSyncExternalStore(
+    listener => sessions.list.subscribe(listener),
+    () => sessions.list.getSnapshot(),
+    () => sessions.list.getSnapshot(),
+  )
+  const sessionId = sessionState.current === undefined ? undefined : String(sessionState.current)
+  const [expanded, setExpanded] = useState(false)
+  const [screen, setScreen] = useState<WorkbenchScreen>(sessionId === undefined ? 'empty' : 'import')
+  const clientApi = useMemo(() => api ?? createClientApi(), [api])
+
+  useEffect(() => setScreen(sessionId === undefined ? 'empty' : 'import'), [sessionId])
+
+  useEffect(() => {
+    if (!expanded) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [expanded])
+
+  if (!expanded) {
+    return <button className="betterlearn-floating-launcher" data-testid="betterlearn-launcher"
+      type="button" aria-label="打开 BetterLearn" aria-expanded={false}
+      onClick={() => setExpanded(true)}>BetterLearn</button>
+  }
+
+  return <aside className="betterlearn-floating-panel" data-testid="betterlearn-floating-panel"
+    data-screen={screen} aria-label="BetterLearn 工作台">
+    <header className="betterlearn-floating-header">
+      <strong>BetterLearn</strong>
+      <button type="button" aria-label="收起 BetterLearn" onClick={() => setExpanded(false)}>收起</button>
+    </header>
+    {sessionId === undefined
+      ? <p className="betterlearn-floating-empty">先在 DSH 创建或选择普通会话，再使用 BetterLearn。</p>
+      : <FloatingSessionWorkspace key={sessionId} sessionId={sessionId} sessions={sessions}
+        modelDirectories={modelDirectories} storage={storage} api={clientApi} onScreenChange={setScreen} />}
+  </aside>
 }
 
 export function mountFloatingWorkbench(ctx: Context): () => void {
@@ -13,7 +92,9 @@ export function mountFloatingWorkbench(ctx: Context): () => void {
   container.setAttribute('data-betterlearn-floating-root', '')
   document.body.appendChild(container)
   const root = createRoot(container)
-  root.render(<BetterLearnFloatingApp />)
+  root.render(<BetterLearnFloatingApp sessions={ctx.sessions}
+    modelDirectories={ctx.modelDirectories as unknown as ModelDirectoryResolverPort}
+    storage={window.sessionStorage} />)
   return () => {
     root.unmount()
     container.remove()
