@@ -44,6 +44,7 @@ export const CLIENT_CSS = `
 .betterlearn-floating-launcher:focus-visible, .betterlearn-floating-header button:focus-visible { outline: 3px solid color-mix(in srgb, var(--nobei-action) 34%, transparent); outline-offset: 3px; }
 .betterlearn-floating-panel {
   --betterlearn-history-width: 260px;
+  box-sizing: border-box;
   position: absolute;
   top: 16px;
   right: 16px;

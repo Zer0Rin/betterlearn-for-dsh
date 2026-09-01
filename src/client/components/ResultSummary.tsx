@@ -14,8 +14,6 @@ export interface ResultSummaryProps {
 function EditableKnowledgePointCard({ item, onUpdate }: {
   item: KnowledgePointSnapshot
   onUpdate: ResultSummaryProps['onUpdate']
-  selected?: boolean
-  onSelectionChange?(): void
 }) {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(item.title)

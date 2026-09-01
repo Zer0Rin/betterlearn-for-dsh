@@ -33,6 +33,7 @@ describe('phase1d scoped styles', () => {
     expect(CLIENT_CSS).toContain('pointer-events: none')
     expect(CLIENT_CSS).toContain('width: var(--betterlearn-user-width)')
     expect(CLIENT_CSS).toContain('height: var(--betterlearn-user-height)')
+    expect(CLIENT_CSS).toContain('box-sizing: border-box')
     expect(CLIENT_CSS).toContain('.betterlearn-resize-handle--left')
     expect(CLIENT_CSS).toContain('cursor: ew-resize')
     expect(CLIENT_CSS).toContain('.betterlearn-resize-handle--bottom')
