@@ -1,4 +1,5 @@
-import { useLayoutEffect } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
+import { HistorySidebar } from './components/HistorySidebar.js'
 import { ImportWorkspace } from './components/ImportWorkspace.js'
 import { ResultSummary } from './components/ResultSummary.js'
 import { ReviewWorkspace } from './components/ReviewWorkspace.js'
@@ -15,17 +16,38 @@ export interface NobeiWorkspaceProps extends ModelSelectionInput {
   storage: Storage
   scheduler?: PollScheduler
   onScreenChange?(screen: WorkspaceScreen): void
+  historyOpen?: boolean
 }
 
 export function NobeiWorkspace({
   sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
-  onScreenChange,
+  onScreenChange, historyOpen = false,
 }: NobeiWorkspaceProps) {
   const workspace = useNobeiWorkspace({
     sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
   })
   const sourceName = workspace.run?.document.filename ?? '新的学习材料'
+  const [historyRuns, setHistoryRuns] = useState<Awaited<ReturnType<ClientApi['listRuns']>>['runs']>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string>()
+  const [historyReload, setHistoryReload] = useState(0)
   useLayoutEffect(() => onScreenChange?.(workspace.screen), [onScreenChange, workspace.screen])
+  useEffect(() => {
+    if (!historyOpen) return
+    const controller = new AbortController()
+    setHistoryLoading(true)
+    setHistoryError(undefined)
+    api.listRuns(controller.signal).then(result => {
+      if (!controller.signal.aborted) setHistoryRuns(result.runs)
+    }).catch(error => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        setHistoryError('历史记录加载失败')
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setHistoryLoading(false)
+    })
+    return () => controller.abort()
+  }, [api, historyOpen, historyReload, workspace.currentRunId, workspace.run?.revision])
   const activeModel = workspace.run?.modelSelection ?? workspace.modelSelection
   const unavailableMessage = workspace.serviceUnavailable ? workspaceCopy.unavailable : undefined
   const operationError = unavailableMessage
@@ -34,7 +56,12 @@ export function NobeiWorkspace({
       ? workspace.message
       : undefined)
   return (
-    <main className="nobei-client" data-testid="nobei-client-view">
+    <div className="nobei-client-layout" data-history-open={historyOpen ? 'true' : 'false'}>
+      {historyOpen && <HistorySidebar runs={historyRuns} currentRunId={workspace.currentRunId}
+        loading={historyLoading} error={historyError}
+        onRetry={() => setHistoryReload(value => value + 1)}
+        onSelect={workspace.openRun} onNew={workspace.reset} />}
+      <main className="nobei-client" data-testid="nobei-client-view">
       <header className="nobei-client__masthead" data-testid="nobei-shared-header">
         <div>
           <p className="nobei-client__brand">Nobei</p>
@@ -63,6 +90,7 @@ export function NobeiWorkspace({
           onReset={workspace.reset} />}
       </div>
       <p className="nobei-client__live-status" aria-live="polite">{workspace.message ?? unavailableMessage ?? ''}</p>
-    </main>
+      </main>
+    </div>
   )
 }

@@ -31,6 +31,14 @@ function run(status: RunSnapshot['status']): RunSnapshot {
 
 function apiFor(status?: RunSnapshot['status']): ClientApi {
   return {
+    listRuns: vi.fn(async () => ({ runs: [
+      { runId: 'job_saved', sourceType: 'document', sourceLabel: '细胞生物学.md',
+        status: status ?? 'completed', stage: 'done', updatedAt: '2026-09-01T09:00:00Z',
+        candidateCount: 2, knowledgePointCount: 1 },
+      { runId: 'job_older', sourceType: 'document', sourceLabel: '旧课程.md',
+        status: 'completed', stage: 'done', updatedAt: '2026-08-31T09:00:00Z',
+        candidateCount: 4, knowledgePointCount: 3 },
+    ] })),
     importText: vi.fn(), retryRun: vi.fn(), reviewCandidate: vi.fn(),
     getRun: vi.fn(async () => run(status!)),
     listEvents: vi.fn(async (_id, after) => ({ events: [], nextAfter: after })),
@@ -227,6 +235,32 @@ describe('phase1d composed workspace', () => {
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
     })
     await vi.waitFor(() => expect(onScreenChange).toHaveBeenLastCalledWith('review'))
+    act(() => renderer.unmount())
+  })
+
+  test('loads global history, opens an old run, and starts a new extraction without deleting history', async () => {
+    const api = apiFor('completed')
+    vi.mocked(api.getRun).mockImplementation(async id => run('completed') && { ...run('completed'), runId: id })
+    const storage = new MemoryStorage()
+    let renderer!: ReactTestRenderer
+    await act(async () => {
+      renderer = create(<NobeiWorkspace sessionId="session" api={api} storage={storage}
+        scheduler={terminalScheduler} modelDirectories={modelDirectories} ordinarySession historyOpen />)
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    })
+
+    await vi.waitFor(() => expect(api.listRuns).toHaveBeenCalled())
+    expect(JSON.stringify(renderer.toJSON())).toContain('旧课程.md')
+    await act(async () => {
+      renderer.root.findByProps({ 'data-run-id': 'job_older' }).props.onClick()
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    })
+    expect(api.getRun).toHaveBeenCalledWith('job_older', expect.any(AbortSignal))
+    expect(api.importText).not.toHaveBeenCalled()
+
+    act(() => renderer.root.findByProps({ 'data-testid': 'history-new' }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-workspace-screen': 'import' })).toBeDefined()
+    expect(JSON.stringify(renderer.toJSON())).toContain('旧课程.md')
     act(() => renderer.unmount())
   })
 

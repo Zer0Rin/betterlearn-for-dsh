@@ -49,6 +49,7 @@ function candidate(id = 'cand_0123456789abcdefabcd', status: CandidateSnapshot['
 
 function fakeApi(overrides: Partial<ClientApi> = {}): ClientApi {
   return {
+    listRuns: vi.fn(async () => ({ runs: [] })),
     importText: vi.fn(), getRun: vi.fn(), listEvents: vi.fn(), retryRun: vi.fn(),
     listCandidates: vi.fn(async () => ({ candidates: [] })),
     reviewCandidate: vi.fn(), listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [] })),
@@ -97,6 +98,30 @@ async function flush() {
 }
 
 describe('phase1d workspace lifecycle', () => {
+  test('switches the current pointer and polling to a selected historical run', async () => {
+    const storage = new MemoryStorage()
+    writeSessionState(storage, 'session-1', { version: 1, runId: 'job_old', lastEventSeq: 7 })
+    const api = fakeApi({
+      getRun: vi.fn(async id => snapshot(id === 'job_old' ? 'generating' : 'completed', { runId: id })),
+      listEvents: vi.fn(async (_id, after) => eventPage(after)),
+    })
+    const app = mount(api, storage)
+    await flush()
+    expect(app.latest.run?.runId).toBe('job_old')
+
+    act(() => app.latest.openRun('job_new'))
+    await flush()
+
+    expect(readSessionState(storage, 'session-1')).toMatchObject({ runId: 'job_new', lastEventSeq: 0 })
+    expect(api.getRun).toHaveBeenCalledWith('job_new', expect.any(AbortSignal))
+    expect(api.listEvents).toHaveBeenCalledWith('job_new', 0, expect.any(AbortSignal))
+    expect(app.latest.currentRunId).toBe('job_new')
+    expect(app.latest.run?.runId).toBe('job_new')
+    expect(app.latest.progress).toBeNull()
+    expect(app.latest.screen).toBe('result')
+    act(() => app.renderer.unmount())
+  })
+
   test('enters review immediately on an SSE hint and releases the subscription', async () => {
     const storage = new MemoryStorage()
     writeSessionState(storage, 'session-1', { version: 1, runId: 'job_saved', lastEventSeq: 0 })

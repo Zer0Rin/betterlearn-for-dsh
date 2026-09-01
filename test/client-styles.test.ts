@@ -37,6 +37,10 @@ describe('phase1d scoped styles', () => {
     expect(CLIENT_CSS).toContain('[data-screen="review"]')
     expect(CLIENT_CSS).toContain('[data-screen="result"]')
     expect(CLIENT_CSS).toContain('--betterlearn-panel-width: min(1080px, calc(100vw - 32px))')
+    expect(CLIENT_CSS).toContain('--betterlearn-history-width: 300px')
+    expect(CLIENT_CSS).toContain('[data-history-open="true"]')
+    expect(CLIENT_CSS).toContain('calc(var(--betterlearn-panel-width) + var(--betterlearn-history-width))')
+    expect(CLIENT_CSS).toContain('right: 16px')
     expect(CLIENT_CSS).toContain('max-height: calc(100dvh - 32px)')
     expect(CLIENT_CSS).not.toMatch(/(^|[,{]\s*)(body|:root|button|input|textarea|main)(?=[\s,{.:#[])/m)
     expect(CLIENT_CSS).not.toContain('dsh-')
@@ -46,7 +50,7 @@ describe('phase1d scoped styles', () => {
     for (const block of selectorBlocks) {
       const selectors = block.replace(/\{$/, '').split(',')
       for (const selector of selectors) {
-        expect(selector.trim()).toMatch(/^(\.nobei-client|\.betterlearn-floating)/)
+        expect(selector.trim()).toMatch(/^(\.nobei-client|\.nobei-history|\.betterlearn-floating)/)
       }
     }
   })

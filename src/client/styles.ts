@@ -41,6 +41,7 @@ export const CLIENT_CSS = `
 .betterlearn-floating-launcher:focus-visible, .betterlearn-floating-header button:focus-visible { outline: 3px solid color-mix(in srgb, var(--nobei-action) 34%, transparent); outline-offset: 3px; }
 .betterlearn-floating-panel {
   --betterlearn-panel-width: 560px;
+  --betterlearn-history-width: 300px;
   position: absolute;
   top: 16px;
   right: 16px;
@@ -57,6 +58,7 @@ export const CLIENT_CSS = `
   box-shadow: 0 24px 70px rgb(23 32 51 / 0.2);
   transition: width 180ms ease, max-height 180ms ease;
 }
+.betterlearn-floating-panel[data-history-open="true"] { width: min(calc(var(--betterlearn-panel-width) + var(--betterlearn-history-width)), calc(100vw - 32px)); }
 .betterlearn-floating-panel[data-screen="empty"] { --betterlearn-panel-width: 420px; }
 .betterlearn-floating-panel[data-screen="import"] { --betterlearn-panel-width: 560px; }
 .betterlearn-floating-panel[data-screen="processing"] { --betterlearn-panel-width: 520px; }
@@ -73,10 +75,47 @@ export const CLIENT_CSS = `
   background: var(--nobei-surface);
 }
 .betterlearn-floating-header strong { color: var(--nobei-action); font: 750 0.8rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: 0.09em; text-transform: uppercase; }
+.betterlearn-floating-header__leading { display: flex; align-items: center; gap: 10px; }
 .betterlearn-floating-header button { border: 0; border-radius: 8px; padding: 7px 10px; color: var(--nobei-muted); background: transparent; font: inherit; cursor: pointer; }
+.betterlearn-floating-header__leading button[aria-expanded="true"] { color: var(--nobei-action); background: color-mix(in srgb, var(--nobei-action) 10%, transparent); }
 .betterlearn-floating-header button:hover { color: var(--nobei-ink); background: color-mix(in srgb, var(--nobei-action) 8%, transparent); }
 .betterlearn-floating-empty { margin: 0; padding: 28px; color: var(--nobei-muted); background: var(--nobei-paper); line-height: 1.65; }
-.betterlearn-floating-panel > .nobei-client { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.betterlearn-floating-panel > .nobei-client-layout { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.nobei-client-layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--betterlearn-panel-width));
+  min-height: 0;
+  color: var(--nobei-ink);
+  background: var(--nobei-paper);
+}
+.nobei-client-layout[data-history-open="true"] { grid-template-columns: var(--betterlearn-history-width) minmax(0, var(--betterlearn-panel-width)); }
+.nobei-history {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-inline-end: 1px solid var(--nobei-line);
+  color: var(--nobei-ink);
+  background: var(--nobei-surface);
+}
+.nobei-history__header { display: grid; gap: 14px; padding: 18px 16px 14px; border-block-end: 1px solid var(--nobei-line); }
+.nobei-history__header p { margin: 0; color: var(--nobei-action); font: 700 0.7rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
+.nobei-history__header h2 { margin: 5px 0 0; font: 700 1.2rem/1.2 ui-serif, "Songti SC", "STSong", Georgia, serif; }
+.nobei-history__header button, .nobei-history__state button { border: 1px solid var(--nobei-line); border-radius: 9px; padding: 8px 11px; color: var(--nobei-action); background: var(--nobei-paper); font: inherit; font-weight: 700; cursor: pointer; }
+.nobei-history__body { display: grid; align-content: start; min-height: 0; overflow: auto; padding: 8px; }
+.nobei-history__state { margin: 8px; padding: 16px 10px; color: var(--nobei-muted); line-height: 1.55; }
+.nobei-history__state p { margin: 0 0 10px; }
+.nobei-history__item { display: grid; gap: 7px; width: 100%; border: 1px solid transparent; border-radius: 11px; padding: 12px; text-align: start; color: var(--nobei-ink); background: transparent; font: inherit; cursor: pointer; }
+.nobei-history__item:hover { background: var(--nobei-paper); }
+.nobei-history__item[aria-current="true"] { border-color: color-mix(in srgb, var(--nobei-action) 32%, var(--nobei-line)); background: color-mix(in srgb, var(--nobei-action) 8%, var(--nobei-surface)); }
+.nobei-history__item-heading { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.nobei-history__item-heading strong { min-width: 0; overflow-wrap: anywhere; font-size: 0.88rem; }
+.nobei-history__item-heading em { flex: 0 0 auto; color: var(--nobei-muted); font-size: 0.68rem; font-style: normal; }
+.nobei-history__item-heading em[data-status="review_pending"] { color: var(--nobei-evidence); }
+.nobei-history__item-heading em[data-status="completed"] { color: var(--nobei-accepted); }
+.nobei-history__item-heading em[data-status="failed_retryable"], .nobei-history__item-heading em[data-status="failed_terminal"] { color: var(--nobei-rejected); }
+.nobei-history__counts, .nobei-history__item time { color: var(--nobei-muted); font: 0.68rem/1.35 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .nobei-client {
   --nobei-paper: #F6F8FC;
   --nobei-surface: #FFFFFF;
@@ -174,8 +213,14 @@ export const CLIENT_CSS = `
   .nobei-client__review { grid-template-columns: minmax(190px, 0.65fr) minmax(0, 1.35fr); }
   .nobei-client__evidence-reader { grid-column: 2; }
 }
+@media (max-width: 1200px) {
+  .betterlearn-floating-panel[data-history-open="true"] { width: min(var(--betterlearn-panel-width), calc(100vw - 32px)); }
+  .nobei-client-layout[data-history-open="true"] { position: relative; grid-template-columns: minmax(0, var(--betterlearn-panel-width)); }
+  .nobei-client-layout[data-history-open="true"] > .nobei-history { position: absolute; z-index: 2; inset: 0 auto 0 0; width: min(var(--betterlearn-history-width), 100%); box-shadow: 18px 0 38px rgb(23 32 51 / 0.18); }
+}
 @media (max-width: 680px) {
   .betterlearn-floating-panel { inset: 0; width: 100%; max-height: 100dvh; border-radius: 0; }
+  .betterlearn-floating-panel[data-history-open="true"] { inset: 0; width: 100%; }
   .nobei-client { padding: 14px; }
   .nobei-client__masthead { display: grid; gap: 12px; }
   .nobei-client__source-identity { justify-items: start; }

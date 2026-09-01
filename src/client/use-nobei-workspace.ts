@@ -34,6 +34,7 @@ type ImportLaunch = Awaited<ReturnType<ClientApi['importText']>>
 const pendingImports = new Map<string, Promise<ImportLaunch>>()
 
 export interface WorkspaceController {
+  currentRunId?: string
   progress?: GenerationProgress | null
   screen: WorkspaceScreen
   run?: RunSnapshot
@@ -48,6 +49,7 @@ export interface WorkspaceController {
   modelSelection?: ModelSelectionSnapshot
   modelDirectoryStatus: ModelDirectoryStatus
   ordinarySession: boolean
+  openRun(runId: string): void
   importText(input: ImportTextInput): Promise<boolean>
   retry(): Promise<void>
   reload(): Promise<void>
@@ -104,6 +106,7 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
   const { sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession } = options
   const scheduler = useMemo(() => options.scheduler ?? browserScheduler(), [options.scheduler])
   const initial = useMemo(() => readSessionState(storage, sessionId), [storage, sessionId])
+  const [currentRunId, setCurrentRunId] = useState(initial.runId)
   const [screen, setScreen] = useState<WorkspaceScreen>(initial.runId ? 'processing' : 'import')
   const [run, setRun] = useState<RunSnapshot>()
   const [progress, setProgress] = useState<GenerationProgress | null>(null)
@@ -228,6 +231,7 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
       onUpdate(update) {
         if (controller.signal.aborted || pollController.current !== controller) return
         setRun(update.run)
+        setCurrentRunId(runId)
         setEvents(current => [...current, ...update.events])
         const current = readSessionState(storage, sessionId)
         writeSessionState(storage, sessionId, {
@@ -242,6 +246,27 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
       },
     }).catch(setFailure)
   }, [api, loadTerminal, scheduler, sessionId, setFailure, storage])
+
+  const openRun = useCallback((runId: string) => {
+    pollController.current?.abort()
+    commandController.current?.abort()
+    commandBusy.current = false
+    reviewBusy.current = false
+    writeSessionState(storage, sessionId, { version: 1, runId, lastEventSeq: 0 })
+    setCurrentRunId(runId)
+    setScreen('processing')
+    setRun(undefined)
+    setProgress(null)
+    setEvents([])
+    setCandidates([])
+    setKnowledgePoints([])
+    setActiveCandidateId(undefined)
+    setSubmittingCandidateId(undefined)
+    setServiceUnavailable(false)
+    setMessage(undefined)
+    setBusy(false)
+    startPoll(runId, 0)
+  }, [sessionId, startPoll, storage])
 
   // Restoring a saved run belongs to the session lifecycle, not the model
   // directory lifecycle. Cordis may supply new directory references on render.
@@ -279,6 +304,7 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
       const launch = await pending
       writeSessionState(storage, sessionId, { version: 1, runId: launch.runId, lastEventSeq: 0 })
       if (!mounted.current) return false
+      setCurrentRunId(launch.runId)
       setScreen('processing')
       setEvents([])
       setCandidates([])
@@ -340,6 +366,7 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
       writeSessionState(storage, sessionId, {
         version: 1, runId: launch.runId, lastEventSeq: saved.lastEventSeq,
       })
+      setCurrentRunId(launch.runId)
       setScreen('processing')
       setServiceUnavailable(false)
       startPoll(launch.runId, saved.lastEventSeq)
@@ -368,6 +395,7 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
     commandBusy.current = false
     reviewBusy.current = false
     writeSessionState(storage, sessionId, { version: 1, lastEventSeq: 0 })
+    setCurrentRunId(undefined)
     setScreen('import')
     setRun(undefined)
     setProgress(null)
@@ -508,9 +536,9 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
   }
 
   return {
-    screen, run, progress, events, candidates, knowledgePoints, busy, activeCandidateId,
+    currentRunId, screen, run, progress, events, candidates, knowledgePoints, busy, activeCandidateId,
     submittingCandidateId, serviceUnavailable, message, modelSelection,
-    modelDirectoryStatus, ordinarySession, importText, retry, reload,
+    modelDirectoryStatus, ordinarySession, openRun, importText, retry, reload,
     selectCandidate: setActiveCandidateId, review, reset,
   }
 }

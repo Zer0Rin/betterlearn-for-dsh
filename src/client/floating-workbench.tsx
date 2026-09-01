@@ -25,10 +25,11 @@ interface FloatingSessionWorkspaceProps {
   storage: Storage
   api: ClientApi
   onScreenChange(screen: WorkspaceScreen): void
+  historyOpen: boolean
 }
 
 function FloatingSessionWorkspace({
-  sessionId, sessions, modelDirectories, storage, api, onScreenChange,
+  sessionId, sessions, modelDirectories, storage, api, onScreenChange, historyOpen,
 }: FloatingSessionWorkspaceProps) {
   const ordinarySession = sessions.subagentAddress(sessionId as never) === undefined
   const face = useMemo(() => modelSelectionInjection(modelDirectories, sessionId, ordinarySession),
@@ -41,7 +42,7 @@ function FloatingSessionWorkspace({
   return <NobeiWorkspace sessionId={sessionId} api={api} storage={storage}
     ordinarySession={ordinarySession} modelDirectoryState={modelDirectoryState}
     loadModelSelection={face.loadModelSelection} readModelDirectory={face.readModelDirectory}
-    onScreenChange={onScreenChange} />
+    onScreenChange={onScreenChange} historyOpen={historyOpen} />
 }
 
 export function BetterLearnFloatingApp({ sessions, modelDirectories, storage, api }: BetterLearnFloatingAppProps) {
@@ -52,6 +53,7 @@ export function BetterLearnFloatingApp({ sessions, modelDirectories, storage, ap
   )
   const sessionId = sessionState.current === undefined ? undefined : String(sessionState.current)
   const [expanded, setExpanded] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [screen, setScreen] = useState<WorkbenchScreen>(sessionId === undefined ? 'empty' : 'import')
   const clientApi = useMemo(() => api ?? createClientApi(), [api])
 
@@ -60,7 +62,10 @@ export function BetterLearnFloatingApp({ sessions, modelDirectories, storage, ap
   useEffect(() => {
     if (!expanded) return
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setExpanded(false)
+      if (event.key === 'Escape') {
+        setHistoryOpen(false)
+        setExpanded(false)
+      }
     }
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
@@ -73,15 +78,24 @@ export function BetterLearnFloatingApp({ sessions, modelDirectories, storage, ap
   }
 
   return <aside className="betterlearn-floating-panel" data-testid="betterlearn-floating-panel"
-    data-screen={screen} aria-label="BetterLearn 工作台">
+    data-screen={screen} data-history-open={historyOpen ? 'true' : 'false'} aria-label="BetterLearn 工作台">
     <header className="betterlearn-floating-header">
-      <strong>BetterLearn</strong>
-      <button type="button" aria-label="收起 BetterLearn" onClick={() => setExpanded(false)}>收起</button>
+      <div className="betterlearn-floating-header__leading">
+        {sessionId !== undefined && <button type="button" data-testid="betterlearn-history-toggle"
+          aria-label={historyOpen ? '收起提取历史' : '展开提取历史'} aria-expanded={historyOpen}
+          onClick={() => setHistoryOpen(value => !value)}>历史</button>}
+        <strong>BetterLearn</strong>
+      </div>
+      <button type="button" aria-label="收起 BetterLearn" onClick={() => {
+        setHistoryOpen(false)
+        setExpanded(false)
+      }}>收起</button>
     </header>
     {sessionId === undefined
       ? <p className="betterlearn-floating-empty">先在 DSH 创建或选择普通会话，再使用 BetterLearn。</p>
       : <FloatingSessionWorkspace key={sessionId} sessionId={sessionId} sessions={sessions}
-        modelDirectories={modelDirectories} storage={storage} api={clientApi} onScreenChange={setScreen} />}
+        modelDirectories={modelDirectories} storage={storage} api={clientApi} onScreenChange={setScreen}
+        historyOpen={historyOpen} />}
   </aside>
 }
 

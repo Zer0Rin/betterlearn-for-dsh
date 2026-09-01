@@ -37,14 +37,14 @@ export function HistorySidebar({
       <button type="button" data-testid="history-new" onClick={onNew}>新建提取</button>
     </header>
     <div className="nobei-history__body">
-      {loading && <p className="nobei-history__state">正在读取历史记录…</p>}
+      {loading && runs.length === 0 && <p className="nobei-history__state">正在读取历史记录…</p>}
       {!loading && error && <div className="nobei-history__state" role="alert">
         <p>{error}</p>
         <button type="button" data-testid="history-retry" onClick={onRetry}>重试</button>
       </div>}
       {!loading && !error && runs.length === 0
         && <p className="nobei-history__state">还没有提取记录</p>}
-      {!loading && !error && runs.map(run => <button key={run.runId} type="button"
+      {!error && runs.map(run => <button key={run.runId} type="button"
         className="nobei-history__item" data-run-id={run.runId}
         aria-current={run.runId === currentRunId ? 'true' : undefined}
         onClick={() => onSelect(run.runId)}>

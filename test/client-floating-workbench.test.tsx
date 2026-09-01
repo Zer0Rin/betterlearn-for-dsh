@@ -35,6 +35,7 @@ const storage = {
 }
 
 const api = {
+  listRuns: vi.fn(async () => ({ runs: [] })),
   importText: vi.fn(), retryRun: vi.fn(), reviewCandidate: vi.fn(),
   getRun: vi.fn(), listEvents: vi.fn(), listCandidates: vi.fn(), listKnowledgePoints: vi.fn(),
 } as unknown as ClientApi
@@ -131,5 +132,30 @@ describe('BetterLearn floating workbench shell', () => {
     })
 
     expect(storage.getItem).toHaveBeenCalledWith('nobei:phase1d:session:session-b')
+  })
+
+  test('keeps history collapsed by default, expands it independently, and resets it with the panel', async () => {
+    const source = sessionSource('session-a')
+    await act(async () => {
+      renderer = create(<BetterLearnFloatingApp
+        sessions={{ list: source, subagentAddress: () => undefined } as never}
+        modelDirectories={modelDirectories} storage={storage as never} api={api} />)
+    })
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    let panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+    expect(panel.props['data-history-open']).toBe('false')
+
+    await act(async () => {
+      renderer.root.findByProps({ 'data-testid': 'betterlearn-history-toggle' }).props.onClick()
+      await Promise.resolve(); await Promise.resolve()
+    })
+    panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+    expect(panel.props['data-history-open']).toBe('true')
+    expect(api.listRuns).toHaveBeenCalled()
+
+    act(() => renderer.root.findByProps({ 'aria-label': '收起 BetterLearn' }).props.onClick())
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+      .props['data-history-open']).toBe('false')
   })
 })
