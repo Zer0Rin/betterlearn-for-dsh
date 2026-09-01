@@ -5,7 +5,7 @@ function passingResult() {
   return {
     clientEntry: {
       surface: 'floating', visible: true, collapsedOnLoad: true,
-      hostWidthBefore: 900, hostWidthAfter: 900, reviewWidth: 1080, resultWidth: 600,
+      hostWidthBefore: 900, hostWidthAfter: 900, reviewWidth: 900, resultWidth: 460,
     },
     clientModule: {
       url: 'http://127.0.0.1:43123/plugins/@nobei/dsh-phase1/client.js',
@@ -28,14 +28,22 @@ function passingResult() {
     },
     sidebarCollapsedForNarrow: true,
     narrowContentWidth: 318,
+    resize: {
+      defaultWidth: 460,
+      defaultHeight: 720,
+      resizedWidth: 620,
+      resizedHeight: 800,
+      restoredWidth: 620,
+      restoredHeight: 800,
+    },
     history: {
       collapsedByDefault: true,
       retainedRunCount: 2,
       hostLayoutUnchanged: true,
       contentWidthBefore: 1080,
       contentWidthAfter: 1080,
-      panelWidthBefore: 1080,
-      panelWidthAfter: 1380,
+      panelWidthBefore: 620,
+      panelWidthAfter: 620,
       globalWithoutSessionStorage: true,
       navigationProviderCalls: 0,
     },
@@ -70,6 +78,7 @@ function passingResult() {
     },
     screenshots: {
       wideResult: '/tmp/wide-result.png',
+      resizedResult: '/tmp/resized-result.png',
       narrowImport: '/tmp/narrow-import.png',
     },
   }
@@ -116,7 +125,11 @@ describe('Phase 1D browser acceptance result', () => {
     ['history expanded by default', (value: ReturnType<typeof passingResult>) => { value.history.collapsedByDefault = false }, 'CLIENT_HISTORY_INVALID'],
     ['old run missing', (value: ReturnType<typeof passingResult>) => { value.history.retainedRunCount = 1 }, 'CLIENT_HISTORY_INVALID'],
     ['history squeezes content', (value: ReturnType<typeof passingResult>) => { value.history.contentWidthAfter = 780 }, 'CLIENT_HISTORY_INVALID'],
+    ['history widens the compact panel', (value: ReturnType<typeof passingResult>) => { value.history.panelWidthAfter = 900 }, 'CLIENT_HISTORY_INVALID'],
     ['history navigation calls model', (value: ReturnType<typeof passingResult>) => { value.history.navigationProviderCalls = 1 }, 'CLIENT_HISTORY_INVALID'],
+    ['result default is too wide', (value: ReturnType<typeof passingResult>) => { value.resize.defaultWidth = 600 }, 'CLIENT_RESIZE_INVALID'],
+    ['resize does not grow width', (value: ReturnType<typeof passingResult>) => { value.resize.resizedWidth = 460 }, 'CLIENT_RESIZE_INVALID'],
+    ['resize is not restored', (value: ReturnType<typeof passingResult>) => { value.resize.restoredHeight = 720 }, 'CLIENT_RESIZE_INVALID'],
     ['failed client module', (value: ReturnType<typeof passingResult>) => { value.clientModule.status = 404 }, 'CLIENT_MODULE_REQUEST_FAILED'],
     ['wrong import status', (value: ReturnType<typeof passingResult>) => { value.productRequests[0].status = 200 }, 'CLIENT_PRODUCT_REQUEST_FAILED'],
     ['missing review request', (value: ReturnType<typeof passingResult>) => { value.productRequests.splice(5, 1) }, 'CLIENT_PRODUCT_REQUEST_FAILED'],

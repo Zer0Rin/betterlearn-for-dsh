@@ -6,7 +6,7 @@ BetterLearn 是 DSH 的 Web 客户端插件。DSH CLI 启动本地服务，`dsh-
 
 客户端通过 `dsh.client.platform: web` 加载，入口直接在 `document.body` 创建独立 React root。Electron 不是插件侧的另一套实现目标。
 
-BetterLearn 不再注册 `conversation.view` 或 `conversation.input.dock`，因此不会挤压 DSH 对话区。屏幕右侧的“BetterLearn”按钮每次加载默认收起；展开后是 fixed 浮动工作台，没有遮罩和焦点锁，用户仍可操作 DSH 本体。浮窗跟随 DSH 当前会话恢复对应任务：导入、处理中和结果保持小窗，审核阶段扩大以同时容纳候选目录、原文证据和操作区。首轮宽度档位是功能基线，后续按视觉验收反馈微调；窄屏使用全屏浮层。
+BetterLearn 不再注册 `conversation.view` 或 `conversation.input.dock`，因此不会挤压 DSH 对话区。屏幕右侧的“BetterLearn”按钮每次加载默认收起；展开后是 fixed 浮动工作台，没有遮罩和焦点锁，用户仍可操作 DSH 本体。结果页默认约 `460px` 宽，减少对 DSH 对话空间的覆盖；审核页保留较宽默认值。桌面端可拖动浮窗左边缘、底边和左下角调整宽高，右边与顶部锚点不动。尺寸按 `empty`、`import`、`processing`、`review`、`result` 分别保存在浏览器 `localStorage`，视口变化时钳制到可见范围。小内容区通过容器查询缩小字体、控件与间距，正常和大窗口的字号上限保持不变；窄屏继续使用全屏浮层。
 
 ```text
 document.body
@@ -14,6 +14,9 @@ document.body
 └─ BetterLearn Floating Root
    ├─ Collapsed Launcher
    └─ Expanded Workbench
+      ├─ Left / Bottom / Bottom-left Resize Handles
+      ├─ Collapsible History Drawer
+      └─ Current Workspace
 ```
 
 当前共存边界仍来自 bundle patch 对专用 profile 的宿主设置覆盖，详见[安装说明](install.md#专用-profile-的能力范围)；尚未承诺在日常编码 profile 中与任意其他 bundle 共用。
@@ -26,6 +29,8 @@ document.body
 - 订阅 DSH 当前会话与 model directory，随会话切换恢复对应任务和模型选择；
 - 只在创建新任务时提交模型选择，不自行保存 DSH 设置；
 - 不持有业务数据库。
+
+历史默认收起。默认窄窗中历史作为工作台内部抽屉覆盖主内容，不改变外层浮窗宽度；用户主动把窗口拉宽到足够容纳两栏后，历史与主内容并排。历史开关不参与尺寸持久化。
 
 浮窗入口直接订阅 DSH 的 `sessions.list` 与 model directory：当前会话变化时切换 BetterLearn 工作区，菜单切换即时更新新任务的模型显示；点击提取时读取最新快照，避免尚未重绘时提交旧选择。任务恢复与轮询仍只跟随会话/任务，目录更新不重新生成已有任务。
 

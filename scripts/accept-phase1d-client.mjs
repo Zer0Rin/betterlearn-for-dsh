@@ -31,7 +31,7 @@ export function assertPhase1dBrowserResult(value) {
     || Math.abs(entry.hostWidthBefore - entry.hostWidthAfter) > 1
     || !Number.isFinite(entry.reviewWidth)
     || !Number.isFinite(entry.resultWidth)
-    || entry.reviewWidth <= entry.resultWidth
+    || entry.reviewWidth <= entry.resultWidth + 200
     || entry.resultWidth <= 0) {
     fail(`CLIENT_FLOATING_LAYOUT_INVALID:${JSON.stringify(entry)}`)
   }
@@ -63,6 +63,21 @@ export function assertPhase1dBrowserResult(value) {
   if (value.sidebarCollapsedForNarrow !== true || value.narrowContentWidth < 280) {
     fail('CLIENT_NARROW_HOST_LAYOUT_INVALID')
   }
+  const resize = value.resize
+  if (!Number.isFinite(resize?.defaultWidth)
+    || !Number.isFinite(resize.defaultHeight)
+    || !Number.isFinite(resize.resizedWidth)
+    || !Number.isFinite(resize.resizedHeight)
+    || !Number.isFinite(resize.restoredWidth)
+    || !Number.isFinite(resize.restoredHeight)
+    || resize.defaultWidth > 500
+    || Math.abs(resize.defaultWidth - entry.resultWidth) > 2
+    || resize.resizedWidth <= resize.defaultWidth + 100
+    || resize.resizedHeight <= resize.defaultHeight + 40
+    || Math.abs(resize.restoredWidth - resize.resizedWidth) > 2
+    || Math.abs(resize.restoredHeight - resize.resizedHeight) > 2) {
+    fail(`CLIENT_RESIZE_INVALID:${JSON.stringify(resize)}`)
+  }
   const history = value.history
   if (history?.collapsedByDefault !== true
     || history.retainedRunCount < 2
@@ -72,7 +87,7 @@ export function assertPhase1dBrowserResult(value) {
     || Math.abs(history.contentWidthBefore - history.contentWidthAfter) > 1
     || !Number.isFinite(history.panelWidthBefore)
     || !Number.isFinite(history.panelWidthAfter)
-    || history.panelWidthAfter <= history.panelWidthBefore
+    || Math.abs(history.panelWidthBefore - history.panelWidthAfter) > 1
     || history.globalWithoutSessionStorage !== true
     || history.navigationProviderCalls !== 0) {
     fail(`CLIENT_HISTORY_INVALID:${JSON.stringify(history)}`)
@@ -114,6 +129,7 @@ export function assertPhase1dBrowserResult(value) {
     fail('CLIENT_FAKE_LEDGER_INVALID')
   }
   if (typeof value.screenshots?.wideResult !== 'string' || value.screenshots.wideResult.length === 0
+    || typeof value.screenshots?.resizedResult !== 'string' || value.screenshots.resizedResult.length === 0
     || typeof value.screenshots?.narrowImport !== 'string' || value.screenshots.narrowImport.length === 0) {
     fail('CLIENT_SCREENSHOT_MISSING')
   }
@@ -418,6 +434,49 @@ async function execute(evidenceRoot) {
     reviewActions.push('reject')
     screens.push(await waitForScreen(page, 'result'))
     const resultWidth = await floatingPanelWidth(page, 'result')
+    const resultPanel = page.getByTestId('betterlearn-floating-panel')
+    const defaultResultRect = await resultPanel.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      return { width: rect.width, height: rect.height }
+    })
+    const screenshotRoot = join(evidenceRoot, 'screenshots')
+    await mkdir(screenshotRoot, { recursive: true })
+    const screenshots = {
+      wideResult: join(screenshotRoot, 'wide-result.png'),
+      resizedResult: join(screenshotRoot, 'resized-result.png'),
+      wideHistory: join(screenshotRoot, 'wide-history.png'),
+      narrowImport: join(screenshotRoot, 'narrow-import.png'),
+    }
+    const corner = page.getByTestId('betterlearn-resize-corner')
+    const cornerBox = await corner.boundingBox()
+    if (cornerBox === null) throw new Error('CLIENT_RESIZE_HANDLE_MISSING')
+    const cornerX = cornerBox.x + cornerBox.width / 2
+    const cornerY = cornerBox.y + cornerBox.height / 2
+    await page.mouse.move(cornerX, cornerY)
+    await page.mouse.down()
+    await page.mouse.move(cornerX - 160, cornerY + 80, { steps: 8 })
+    await page.mouse.up()
+    const resizedResultRect = await resultPanel.evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      return { width: rect.width, height: rect.height }
+    })
+    await page.screenshot({ path: screenshots.resizedResult, fullPage: true })
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await openNobeiView(page, manifest.paths.runtimeRoot)
+    await waitForScreen(page, 'result')
+    const restoredResultRect = await page.getByTestId('betterlearn-floating-panel').evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      return { width: rect.width, height: rect.height }
+    })
+    const resize = {
+      defaultWidth: defaultResultRect.width,
+      defaultHeight: defaultResultRect.height,
+      resizedWidth: resizedResultRect.width,
+      resizedHeight: resizedResultRect.height,
+      restoredWidth: restoredResultRect.width,
+      restoredHeight: restoredResultRect.height,
+    }
 
     const knowledgePointCount = await page.locator('.nobei-client__knowledge-list article').count()
     await page.getByTestId('nobei-reset').click()
@@ -467,13 +526,6 @@ async function execute(evidenceRoot) {
     const contentWidthAfter = await page.locator('.nobei-client').evaluate(element => element.getBoundingClientRect().width)
     const panelWidthAfter = await floatingPanel.evaluate(element => element.getBoundingClientRect().width)
 
-    const screenshotRoot = join(evidenceRoot, 'screenshots')
-    await mkdir(screenshotRoot, { recursive: true })
-    const screenshots = {
-      wideResult: join(screenshotRoot, 'wide-result.png'),
-      wideHistory: join(screenshotRoot, 'wide-history.png'),
-      narrowImport: join(screenshotRoot, 'narrow-import.png'),
-    }
     await page.screenshot({ path: screenshots.wideHistory, fullPage: true })
     await page.locator(`.nobei-history [data-run-id="${importedRunId}"]`).click()
     await waitForScreen(page, 'result')
@@ -551,6 +603,7 @@ async function execute(evidenceRoot) {
       filePreview,
       sidebarCollapsedForNarrow,
       narrowContentWidth,
+      resize,
       history: {
         collapsedByDefault: historyCollapsedByDefault,
         retainedRunCount,
