@@ -55,6 +55,7 @@ export interface WorkspaceController {
   reload(): Promise<void>
   selectCandidate(candidateId: string): void
   review(candidate: CandidateSnapshot, draft: ReviewActionDraft): Promise<boolean>
+  updateKnowledgePoint(point: KnowledgePointSnapshot, input: { title: string; statement: string }): Promise<boolean>
   reset(): void
 }
 
@@ -134,6 +135,7 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
   const modelLoadPromise = useRef<Promise<ModelSelectionSnapshot>>()
   const commandBusy = useRef(false)
   const reviewBusy = useRef(false)
+  const editBusy = useRef(false)
   const mounted = useRef(false)
   const replayReview = useRef<(
     snapshot: RunSnapshot,
@@ -501,6 +503,37 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
     }
   }, [executeReview])
 
+  const updateKnowledgePoint = useCallback(async (
+    point: KnowledgePointSnapshot,
+    input: { title: string; statement: string },
+  ): Promise<boolean> => {
+    if (editBusy.current || run?.status !== 'completed') return false
+    editBusy.current = true
+    setBusy(true)
+    setMessage(undefined)
+    const controller = new AbortController()
+    commandController.current?.abort()
+    commandController.current = controller
+    try {
+      const result = await api.updateKnowledgePoint(point.knowledgePointId, input, controller.signal)
+      if (!mounted.current || controller.signal.aborted) return false
+      setRun(result.run)
+      setKnowledgePoints(items => items.map(item =>
+        item.knowledgePointId === point.knowledgePointId ? result.knowledgePoint : item))
+      setServiceUnavailable(false)
+      setMessage('知识点修改已保存。')
+      return true
+    } catch (error) {
+      setFailure(error)
+      return false
+    } finally {
+      if (commandController.current === controller) {
+        editBusy.current = false
+        if (mounted.current) setBusy(false)
+      }
+    }
+  }, [api, run?.status, setFailure])
+
   replayReview.current = async (snapshot, availableCandidates, parentSignal) => {
     const saved = readSessionState(storage, sessionId)
     const pending = saved.pendingReview
@@ -539,6 +572,6 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
     currentRunId, screen, run, progress, events, candidates, knowledgePoints, busy, activeCandidateId,
     submittingCandidateId, serviceUnavailable, message, modelSelection,
     modelDirectoryStatus, ordinarySession, openRun, importText, retry, reload,
-    selectCandidate: setActiveCandidateId, review, reset,
+    selectCandidate: setActiveCandidateId, review, updateKnowledgePoint, reset,
   }
 }

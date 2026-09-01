@@ -213,6 +213,15 @@ export const CLIENT_CSS = `
 .nobei-client__knowledge-list { display: grid; gap: 12px; }
 .nobei-client__knowledge-list article { padding: 18px; border-inline-start: 3px solid var(--nobei-accepted); background: var(--nobei-paper); }
 .nobei-client__knowledge-list article > p:first-child { color: var(--nobei-muted); font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 0.75rem; }
+.nobei-client__knowledge-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.nobei-client__knowledge-heading button, .nobei-client__knowledge-actions button { flex: none; margin: 0; padding: 6px 10px; border: 1px solid var(--nobei-line); border-radius: 8px; color: var(--nobei-action); background: var(--nobei-surface); }
+.nobei-client__knowledge-editor { display: grid; gap: 10px; }
+.nobei-client__knowledge-editor label { display: grid; gap: 5px; color: var(--nobei-muted); font-size: 0.8rem; }
+.nobei-client__knowledge-editor input, .nobei-client__knowledge-editor textarea { width: 100%; color: var(--nobei-ink); background: var(--nobei-surface); }
+.nobei-client__knowledge-editor textarea { min-height: 120px; resize: vertical; }
+.nobei-client__knowledge-actions { display: flex; gap: 8px; }
+.nobei-client__knowledge-actions button:disabled { cursor: not-allowed; opacity: 0.55; }
+.nobei-client__knowledge-edit-error { color: var(--nobei-rejected); }
 .nobei-client__empty-result { margin-block: 26px; padding: 18px; border-inline-start: 3px solid var(--nobei-evidence); background: var(--nobei-paper); }
 .nobei-client__live-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (prefers-color-scheme: dark) {

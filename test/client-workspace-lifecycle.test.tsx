@@ -53,6 +53,7 @@ function fakeApi(overrides: Partial<ClientApi> = {}): ClientApi {
     importText: vi.fn(), getRun: vi.fn(), listEvents: vi.fn(), retryRun: vi.fn(),
     listCandidates: vi.fn(async () => ({ candidates: [] })),
     reviewCandidate: vi.fn(), listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [] })),
+    updateKnowledgePoint: vi.fn(),
     ...overrides,
   } as ClientApi
 }
@@ -98,6 +99,33 @@ async function flush() {
 }
 
 describe('phase1d workspace lifecycle', () => {
+  test('replaces the saved knowledge point and run snapshot after an edit', async () => {
+    const storage = new MemoryStorage()
+    writeSessionState(storage, 'session-1', { version: 1, runId: 'job_saved', lastEventSeq: 0 })
+    const original = { knowledgePointId: 'kp_0123456789abcdefabcd', type: 'concept' as const,
+      title: '原始标题', statement: '原始陈述', documentId: 'doc_1', evidence: [] }
+    const updatedRun = snapshot('completed', { runId: 'job_saved', revision: 4,
+      counts: { rawCandidates: 1, validCandidates: 1, pending: 0, accepted: 0,
+        editedAndAccepted: 1, rejected: 0, knowledgePoints: 1 } })
+    const api = fakeApi({
+      getRun: vi.fn(async () => snapshot('completed', { runId: 'job_saved' })),
+      listEvents: vi.fn(async () => eventPage()),
+      listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [original] })),
+      updateKnowledgePoint: vi.fn(async () => ({ knowledgePoint: { ...original, title: '新标题', statement: '新陈述' }, run: updatedRun })),
+    })
+    const app = mount(api, storage)
+    await flush()
+
+    let saved = false
+    await act(async () => { saved = await app.latest.updateKnowledgePoint(original, { title: '新标题', statement: '新陈述' }) })
+
+    expect(saved).toBe(true)
+    expect(api.updateKnowledgePoint).toHaveBeenCalledWith(original.knowledgePointId,
+      { title: '新标题', statement: '新陈述' }, expect.any(AbortSignal))
+    expect(app.latest.knowledgePoints[0]).toMatchObject({ title: '新标题', statement: '新陈述' })
+    expect(app.latest.run).toEqual(updatedRun)
+    act(() => app.renderer.unmount())
+  })
   test('switches the current pointer and polling to a selected historical run', async () => {
     const storage = new MemoryStorage()
     writeSessionState(storage, 'session-1', { version: 1, runId: 'job_old', lastEventSeq: 7 })

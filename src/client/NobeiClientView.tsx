@@ -87,7 +87,7 @@ export function NobeiWorkspace({
           onSelect={workspace.selectCandidate} onReview={workspace.review} onReload={workspace.reload} />}
         {workspace.screen === 'result' && workspace.run && <ResultSummary run={workspace.run}
           candidates={workspace.candidates} knowledgePoints={workspace.knowledgePoints}
-          onReset={workspace.reset} />}
+          onUpdate={workspace.updateKnowledgePoint} onReset={workspace.reset} />}
       </div>
       <p className="nobei-client__live-status" aria-live="polite">{workspace.message ?? unavailableMessage ?? ''}</p>
       </main>
