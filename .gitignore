@@ -9,3 +9,4 @@ lib/
 acceptance/*/lib/
 acceptance/*/dist/
 evidence/
+.worktrees/
