@@ -22,6 +22,7 @@ import type {
   PreparedGeneration,
   RetryAndPrepareParams,
   ReviewCandidateParams,
+  RunHistoryResult,
   RunParams,
   SubmitGenerationParams,
 } from './types.js'
@@ -109,6 +110,10 @@ export class FixedCoreRpcClient {
 
   getRun(params: RunParams, signal?: AbortSignal): Promise<CoreRunSnapshot> {
     return this.#request('runs.get', params, CORE_READ_RPC_TIMEOUT_MS, signal) as Promise<CoreRunSnapshot>
+  }
+
+  listRuns(signal?: AbortSignal): Promise<RunHistoryResult> {
+    return this.#request('runs.list', {}, CORE_READ_RPC_TIMEOUT_MS, signal) as Promise<RunHistoryResult>
   }
 
   listEvents(params: EventParams, signal?: AbortSignal): Promise<EventList> {

@@ -117,6 +117,21 @@ export interface CoreRunSnapshot extends Record<string, unknown> {
   lastEventSeq: number
 }
 
+export interface RunHistorySummary {
+  runId: OpaqueId
+  sourceType: 'document'
+  sourceLabel: string
+  status: string
+  stage: string
+  updatedAt: string
+  candidateCount: number
+  knowledgePointCount: number
+}
+
+export interface RunHistoryResult extends Record<string, unknown> {
+  runs: RunHistorySummary[]
+}
+
 export interface EventList extends Record<string, unknown> {
   events: Array<Record<string, unknown>>
   nextAfter: number

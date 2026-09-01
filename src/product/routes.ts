@@ -23,6 +23,7 @@ import type {
   KnowledgePointList,
   ReviewCandidateParams,
   RetryAndPrepareParams,
+  RunHistoryResult,
 } from './types.js'
 
 export interface ProductOperations {
@@ -30,6 +31,7 @@ export interface ProductOperations {
   watchRun(runId: string, onChange: (progress?: GenerationProgress) => void): () => void
   getProgress(runId: string): GenerationProgress | null
   launchImport(params: ImportAndPrepareParams, signal?: AbortSignal): Promise<GenerationLaunch>
+  listRuns(signal?: AbortSignal): Promise<RunHistoryResult>
   getRun(runId: string, signal?: AbortSignal): Promise<CoreRunSnapshot>
   listEvents(runId: string, after: number, signal?: AbortSignal): Promise<EventList>
   launchRetry(params: RetryAndPrepareParams, signal?: AbortSignal): Promise<GenerationLaunch>
@@ -47,6 +49,7 @@ type RouteMatch =
   | { kind: 'import'; method: 'POST' }
   | { kind: 'stream'; method: 'GET'; runId: string }
   | { kind: 'progress'; method: 'GET'; runId: string }
+  | { kind: 'runs'; method: 'GET' }
   | { kind: 'run'; method: 'GET'; runId: string }
   | { kind: 'events'; method: 'GET'; runId: string; after: string | undefined; queryValid: boolean }
   | { kind: 'retry'; method: 'POST'; runId: string }
@@ -73,6 +76,7 @@ function sendError(res: ServerResponse, status: number, code: string, extra?: Re
 function matchRoute(url: URL): RouteMatch | undefined {
   if (url.pathname === '/nobei/v1/documents/preview' && url.search === '') return { kind: 'preview', method: 'POST' }
   if (url.pathname === '/nobei/v1/imports' && url.search === '') return { kind: 'import', method: 'POST' }
+  if (url.pathname === '/nobei/v1/runs' && url.search === '') return { kind: 'runs', method: 'GET' }
   let match = /^\/nobei\/v1\/runs\/([^/]+)$/.exec(url.pathname)
   if (match && url.search === '') return { kind: 'run', method: 'GET', runId: match[1] }
   match = /^\/nobei\/v1\/runs\/([^/]+)\/stream$/.exec(url.pathname)
@@ -315,6 +319,7 @@ export function registerProductRoutes(
         let result: unknown
         if (route.kind === 'preview') result = await operations.previewDocument(previewParams as DocumentPreviewParams)
         else if (route.kind === 'import') result = await operations.launchImport(importParams as ImportAndPrepareParams)
+        else if (route.kind === 'runs') result = await operations.listRuns()
         else if (route.kind === 'run') result = await operations.getRun(route.runId)
         else if (route.kind === 'progress') result = operations.getProgress(route.runId)
         else if (route.kind === 'events') result = await operations.listEvents(route.runId, after as number)

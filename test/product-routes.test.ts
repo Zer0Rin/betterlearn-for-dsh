@@ -25,6 +25,7 @@ function operations(override: Partial<ProductOperations> = {}): ProductOperation
     watchRun: vi.fn(() => vi.fn()),
     getProgress: vi.fn(() => null),
     launchImport: vi.fn(async () => ({ runId, attemptId: `att_${'d'.repeat(20)}`, revision: 2 })),
+    listRuns: vi.fn(async () => ({ runs: [] })),
     getRun: vi.fn(async () => ({ runId, documentId: `doc_${'e'.repeat(20)}`, status: 'generating', stage: 'extract', revision: 2, retryCount: 0, lastEventSeq: 2 })),
     listEvents: vi.fn(async () => ({ events: [], nextAfter: 0 })),
     launchRetry: vi.fn(async () => ({ runId, attemptId: `att_${'f'.repeat(20)}`, revision: 7 })),
@@ -98,6 +99,20 @@ const routes = [
 const states: CoreState[] = ['STARTING', 'READY', 'RESTARTING', 'DEGRADED', 'DISPOSING', 'DISPOSED']
 
 describe('product route table', () => {
+  test('serves the global run collection before the parameterized run route', async () => {
+    const listRuns = vi.fn(async () => ({ runs: [] }))
+    const ops = operations() as ProductOperations & { listRuns(): Promise<{ runs: unknown[] }> }
+    ops.listRuns = listRuns
+    const { port, dispose } = await listen('READY', ops)
+
+    const response = await send(port, { method: 'GET', path: '/nobei/v1/runs' })
+
+    expect(response).toMatchObject({ status: 200, body: { ok: true, result: { runs: [] } } })
+    expect(listRuns).toHaveBeenCalledOnce()
+    expect(ops.getRun).not.toHaveBeenCalled()
+    dispose()
+  })
+
   test('sends the current progress on reconnect and pushes updates without reading Core', async () => {
     const p = { phase: 'extracting', completedBatches: 2, totalBatches: 4, startedAt: 1, lastResponseAt: 2 }
     let notify!: (p?: any) => void

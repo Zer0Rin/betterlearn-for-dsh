@@ -100,8 +100,13 @@ describe('phase1c product plugin', () => {
       supervisor, expect.anything(), resolver,
     )
     const onChange = vi.fn()
-    vi.mocked(deps.registerRoutes).mock.calls[0]![2].watchRun('job_1', onChange)
+    const operations = vi.mocked(deps.registerRoutes).mock.calls[0]![2]
+    operations.watchRun('job_1', onChange)
     expect(coordinator.watchRun).toHaveBeenCalledWith('job_1', onChange)
+    const listRuns = vi.fn(async () => ({ runs: [] }))
+    supervisor.withReadyClient.mockImplementation(async (use: (client: { listRuns: typeof listRuns }) => unknown) => use({ listRuns }))
+    await operations.listRuns()
+    expect(listRuns).toHaveBeenCalledWith(undefined)
     await dispose()
     await dispose()
     expect(order).toEqual([

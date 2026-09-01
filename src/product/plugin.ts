@@ -96,6 +96,9 @@ export async function applyProductPlugin(
     launchRetry: (params, signal) => coordinator
       ? coordinator.launchRetry(params, signal)
       : Promise.reject(new Error('CORE_UNAVAILABLE')),
+    listRuns: signal => supervisor
+      ? supervisor.withReadyClient((client) => client.listRuns(signal))
+      : Promise.reject(new Error('CORE_UNAVAILABLE')),
     getRun: (runId, signal) => supervisor
       ? supervisor.withReadyClient((client) => client.getRun({ runId }, signal))
       : Promise.reject(new Error('CORE_UNAVAILABLE')),

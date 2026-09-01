@@ -36,6 +36,19 @@ afterEach(() => {
 })
 
 describe('FixedCoreRpcClient', () => {
+  test('writes the closed global run-history request', async () => {
+    const { client, input, requests } = pair()
+    const pending = (client as unknown as {
+      listRuns(signal?: AbortSignal): Promise<Record<string, unknown>>
+    }).listRuns()
+
+    expect(requests).toEqual([{
+      jsonrpc: '2.0', id: 1, method: 'runs.list', params: {},
+    }])
+    input.write(result(1, { runs: [] }))
+    await expect(pending).resolves.toEqual({ runs: [] })
+  })
+
   test('assembles fragmented UTF-8 and dispatches multiple response frames', async () => {
     const { client, input, requests } = pair()
     const first = client.getRun({ runId: 'job_0123456789abcdefabcd' })
