@@ -308,3 +308,21 @@ def test_import_stores_canonical_document_without_projection(core, database, fil
     events = core.list_events({'runId': result['runId'], 'after': 0})['events']
     assert [e['seq'] for e in events] == [1, 2, 3]
     assert [e['type'] for e in events] == ['run.created', 'document.ready', 'generation.awaiting']
+
+
+def test_import_preserves_dsh_conversation_media_type(core, database):
+    media_type = 'application/vnd.betterlearn.dsh-conversation+markdown'
+
+    result = core.import_text({
+        'filename': 'DSH对话合集-主题.md',
+        'mediaType': media_type,
+        'text': '# DSH 对话合集\n\n有效内容',
+    })
+
+    assert database.one(
+        'SELECT filename,media_type FROM documents WHERE id=?',
+        (result['documentId'],),
+    ) == {
+        'filename': 'DSH对话合集-主题.md',
+        'media_type': media_type,
+    }

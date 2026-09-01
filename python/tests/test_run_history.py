@@ -14,9 +14,13 @@ def core(database):
     return Phase1Core(database, load_candidate_contract(PYTHON_ROOT.parent))
 
 
-def _import(core: Phase1Core, filename: str) -> dict[str, object]:
+def _import(
+    core: Phase1Core,
+    filename: str,
+    media_type: str = "text/markdown",
+) -> dict[str, object]:
     return core.import_text(
-        {"filename": filename, "mediaType": "text/markdown", "text": f"# {filename}"}
+        {"filename": filename, "mediaType": media_type, "text": f"# {filename}"}
     )
 
 
@@ -56,6 +60,30 @@ def test_list_runs_returns_global_summaries_in_updated_order(
         "updatedAt": "2026-09-01T02:00:00Z",
         "candidateCount": 11,
         "knowledgePointCount": 5,
+    }
+
+
+def test_list_runs_identifies_dsh_conversation_sources(core: Phase1Core, database):
+    imported = _import(
+        core,
+        "DSH对话合集-复习主题.md",
+        "application/vnd.betterlearn.dsh-conversation+markdown",
+    )
+    with database.write_transaction() as con:
+        con.execute(
+            "UPDATE runs SET updated_at='2026-09-01T03:00:00Z' WHERE id=?",
+            (imported["runId"],),
+        )
+
+    assert core.list_runs({})["runs"][0] == {
+        "runId": imported["runId"],
+        "sourceType": "dsh_conversation",
+        "sourceLabel": "DSH对话合集-复习主题.md",
+        "status": "awaiting_generation",
+        "stage": "extract",
+        "updatedAt": "2026-09-01T03:00:00Z",
+        "candidateCount": 0,
+        "knowledgePointCount": 0,
     }
 
 

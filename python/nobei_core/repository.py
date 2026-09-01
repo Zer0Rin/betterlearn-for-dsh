@@ -646,7 +646,7 @@ def read_run_candidates(con, run_id):
 
 def read_run_history(con: sqlite3.Connection) -> list[dict[str, Any]]:
     return [dict(row) for row in con.execute(
-        "SELECT r.id AS run_id,d.filename,r.status,r.stage,r.updated_at,"
+        "SELECT r.id AS run_id,d.filename,d.media_type,r.status,r.stage,r.updated_at,"
         "r.valid_candidate_count,r.accepted_candidate_count "
         "FROM runs r JOIN documents d ON d.id=r.document_id "
         "ORDER BY r.updated_at DESC,r.created_at DESC,r.id DESC"
