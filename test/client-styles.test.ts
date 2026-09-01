@@ -28,6 +28,16 @@ describe('phase1d scoped styles', () => {
     expect(CLIENT_CSS).toContain('prefers-reduced-motion: reduce')
     expect(CLIENT_CSS).toContain('@media (max-width: 680px)')
     expect(CLIENT_CSS).not.toMatch(/url\(|@import|https?:|linear-gradient|radial-gradient|backdrop-filter/)
+    expect(CLIENT_CSS).toContain('.betterlearn-floating-root')
+    expect(CLIENT_CSS).toContain('position: fixed')
+    expect(CLIENT_CSS).toContain('pointer-events: none')
+    expect(CLIENT_CSS).toContain('[data-screen="empty"]')
+    expect(CLIENT_CSS).toContain('[data-screen="import"]')
+    expect(CLIENT_CSS).toContain('[data-screen="processing"]')
+    expect(CLIENT_CSS).toContain('[data-screen="review"]')
+    expect(CLIENT_CSS).toContain('[data-screen="result"]')
+    expect(CLIENT_CSS).toContain('--betterlearn-panel-width: min(1080px, calc(100vw - 32px))')
+    expect(CLIENT_CSS).toContain('max-height: calc(100dvh - 32px)')
     expect(CLIENT_CSS).not.toMatch(/(^|[,{]\s*)(body|:root|button|input|textarea|main)(?=[\s,{.:#[])/m)
     expect(CLIENT_CSS).not.toContain('dsh-')
     const selectorBlocks = CLIENT_CSS.split('\n')
@@ -35,7 +45,9 @@ describe('phase1d scoped styles', () => {
       .filter(line => line.endsWith('{') && !line.startsWith('@'))
     for (const block of selectorBlocks) {
       const selectors = block.replace(/\{$/, '').split(',')
-      for (const selector of selectors) expect(selector.trim()).toMatch(/^\.nobei-client/)
+      for (const selector of selectors) {
+        expect(selector.trim()).toMatch(/^(\.nobei-client|\.betterlearn-floating)/)
+      }
     }
   })
 })

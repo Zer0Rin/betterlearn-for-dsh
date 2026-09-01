@@ -1,6 +1,82 @@
 export const CLIENT_STYLE_ID = '@nobei/dsh-phase1/client'
 
 export const CLIENT_CSS = `
+.betterlearn-floating-root {
+  --nobei-paper: #F6F8FC;
+  --nobei-surface: #FFFFFF;
+  --nobei-ink: #172033;
+  --nobei-muted: #657087;
+  --nobei-line: #DDE3EE;
+  --nobei-action: #315EFB;
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  pointer-events: none;
+  color: var(--nobei-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.betterlearn-floating-launcher {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-height: 132px;
+  border: 1px solid #2448C7;
+  border-inline-end: 0;
+  border-radius: 14px 0 0 14px;
+  padding: 14px 10px;
+  transform: translateY(-50%);
+  pointer-events: auto;
+  color: #FFFFFF;
+  background: var(--nobei-action);
+  box-shadow: 0 14px 36px rgb(23 32 51 / 0.22);
+  font: 700 0.76rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  cursor: pointer;
+}
+.betterlearn-floating-launcher:hover { background: #2448C7; }
+.betterlearn-floating-launcher:focus-visible, .betterlearn-floating-header button:focus-visible { outline: 3px solid color-mix(in srgb, var(--nobei-action) 34%, transparent); outline-offset: 3px; }
+.betterlearn-floating-panel {
+  --betterlearn-panel-width: 560px;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--betterlearn-panel-width), calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  pointer-events: auto;
+  border: 1px solid var(--nobei-line);
+  border-radius: 18px;
+  color: var(--nobei-ink);
+  background: var(--nobei-paper);
+  box-shadow: 0 24px 70px rgb(23 32 51 / 0.2);
+  transition: width 180ms ease, max-height 180ms ease;
+}
+.betterlearn-floating-panel[data-screen="empty"] { --betterlearn-panel-width: 420px; }
+.betterlearn-floating-panel[data-screen="import"] { --betterlearn-panel-width: 560px; }
+.betterlearn-floating-panel[data-screen="processing"] { --betterlearn-panel-width: 520px; }
+.betterlearn-floating-panel[data-screen="review"] { --betterlearn-panel-width: min(1080px, calc(100vw - 32px)); }
+.betterlearn-floating-panel[data-screen="result"] { --betterlearn-panel-width: 600px; }
+.betterlearn-floating-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 8px 12px 8px 18px;
+  border-block-end: 1px solid var(--nobei-line);
+  background: var(--nobei-surface);
+}
+.betterlearn-floating-header strong { color: var(--nobei-action); font: 750 0.8rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; letter-spacing: 0.09em; text-transform: uppercase; }
+.betterlearn-floating-header button { border: 0; border-radius: 8px; padding: 7px 10px; color: var(--nobei-muted); background: transparent; font: inherit; cursor: pointer; }
+.betterlearn-floating-header button:hover { color: var(--nobei-ink); background: color-mix(in srgb, var(--nobei-action) 8%, transparent); }
+.betterlearn-floating-empty { margin: 0; padding: 28px; color: var(--nobei-muted); background: var(--nobei-paper); line-height: 1.65; }
+.betterlearn-floating-panel > .nobei-client { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .nobei-client {
   --nobei-paper: #F6F8FC;
   --nobei-surface: #FFFFFF;
@@ -13,10 +89,10 @@ export const CLIENT_CSS = `
   --nobei-rejected: #B94A48;
   box-sizing: border-box;
   min-height: 0;
-  max-height: calc(100dvh - 80px);
+  max-height: none;
   overflow: auto;
   container-type: inline-size;
-  padding: clamp(18px, 3vw, 44px);
+  padding: clamp(16px, 2.4vw, 28px);
   color: var(--nobei-ink);
   background: var(--nobei-paper);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -91,6 +167,7 @@ export const CLIENT_CSS = `
 .nobei-client__empty-result { margin-block: 26px; padding: 18px; border-inline-start: 3px solid var(--nobei-evidence); background: var(--nobei-paper); }
 .nobei-client__live-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (prefers-color-scheme: dark) {
+  .betterlearn-floating-root { --nobei-paper: #111722; --nobei-surface: #1A2230; --nobei-ink: #EDF2FA; --nobei-muted: #A8B1C2; --nobei-line: #354055; --nobei-action: #7C9BFF; }
   .nobei-client { --nobei-paper: #111722; --nobei-surface: #1A2230; --nobei-ink: #EDF2FA; --nobei-muted: #A8B1C2; --nobei-line: #354055; --nobei-action: #7C9BFF; --nobei-accepted: #69C6A0; --nobei-evidence: #E3A84B; --nobei-rejected: #E47B78; }
 }
 @media (max-width: 1000px) {
@@ -98,6 +175,7 @@ export const CLIENT_CSS = `
   .nobei-client__evidence-reader { grid-column: 2; }
 }
 @media (max-width: 680px) {
+  .betterlearn-floating-panel { inset: 0; width: 100%; max-height: 100dvh; border-radius: 0; }
   .nobei-client { padding: 14px; }
   .nobei-client__masthead { display: grid; gap: 12px; }
   .nobei-client__source-identity { justify-items: start; }
@@ -110,6 +188,7 @@ export const CLIENT_CSS = `
   .nobei-client__result-counts { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .betterlearn-floating-panel { transition-duration: 0.01ms; }
   .nobei-client *, .nobei-client *::before, .nobei-client *::after { scroll-behavior: auto; transition-duration: 0.01ms; }
 }
 @container (max-width: 900px) {
