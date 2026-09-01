@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path'
+import { timingSafeEqual } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
@@ -8,9 +9,14 @@ import { GenerationCoordinator } from './generation-coordinator.js'
 import { DshModelSelectionResolver, type ModelSelectionResolver } from './model-selection-resolver.js'
 import { loadCandidateContract, type CandidateContract } from './contract.js'
 import { registerProductRoutes, type ProductOperations } from './routes.js'
+import {
+  DshConversationSource,
+  DshConversationSourceError,
+} from './dsh-conversation-source.js'
+import type { SessionQueryEngine } from '@deepseek-ai/dsh-session-query'
 
 export const name = 'nobei-phase1c'
-export const inject = ['agents', 'llm', 'subprocess', 'tools', 'webServer', 'workflowEngine'] as const
+export const inject = ['agents', 'llm', 'sessionQuery', 'subprocess', 'tools', 'webServer', 'workflowEngine'] as const
 
 export interface Config extends CoreSupervisorConfig {}
 export type ProductPluginConfig = Config
@@ -38,6 +44,7 @@ export interface ProductPluginDependencies {
   createSupervisor(ctx: Context, config: ProductPluginConfig, contract: CandidateContract): CoreSupervisor
   createAdapter(ctx: Context, contract: CandidateContract, packageRoot: string): StructuredGenerationAdapter
   createModelSelectionResolver(ctx: Context): ModelSelectionResolver
+  createConversationSource(query: SessionQueryEngine): DshConversationSource
   createCoordinator(supervisor: CoreSupervisor, adapter: StructuredGenerationAdapter, resolver: ModelSelectionResolver): GenerationCoordinator
   registerRoutes(ctx: Context, state: { readonly state: CoreSupervisor['state'] }, operations: ProductOperations): () => void
 }
@@ -56,6 +63,7 @@ const defaultDependencies: ProductPluginDependencies = {
     ctx, contract, { packageRoot: ownedPackageRoot },
   ),
   createModelSelectionResolver: (ctx) => new DshModelSelectionResolver(ctx),
+  createConversationSource: query => new DshConversationSource(query),
   createCoordinator: (supervisor, adapter, resolver) => new GenerationCoordinator(
     supervisor, adapter, resolver,
   ),
@@ -83,16 +91,42 @@ export async function applyProductPlugin(
   const contract = dependencies.loadContract(dependencies.packageRoot)
   let supervisor: CoreSupervisor | undefined
   let coordinator: GenerationCoordinator | undefined
+  let conversationSource: DshConversationSource | undefined
 
   const operations: ProductOperations = {
     previewDocument: (params, signal) => supervisor
       ? supervisor.withReadyClient((client) => client.previewDocument(params, signal))
       : Promise.reject(new Error('CORE_UNAVAILABLE')),
+    previewDshConversations: async (sessionIds, signal) => {
+      if (!conversationSource || !supervisor) throw new Error('CORE_UNAVAILABLE')
+      const document = await conversationSource.read(sessionIds, signal)
+      const preview = await supervisor.withReadyClient(client => client.previewDocument({
+        filename: document.filename,
+        mediaType: document.mediaType,
+        text: document.text,
+      }, signal))
+      return { ...document, extractionPlan: preview.extractionPlan }
+    },
     watchRun: (runId, onChange) => coordinator!.watchRun(runId, onChange),
     getProgress: runId => coordinator!.getProgress(runId),
     launchImport: (params, signal) => coordinator
       ? coordinator.launchImport(params, signal)
       : Promise.reject(new Error('CORE_UNAVAILABLE')),
+    importDshConversations: async (params, signal) => {
+      if (!conversationSource || !coordinator) throw new Error('CORE_UNAVAILABLE')
+      const document = await conversationSource.read(params.sessionIds, signal)
+      const actual = Buffer.from(document.contentDigest, 'hex')
+      const expected = Buffer.from(params.expectedDigest, 'hex')
+      if (actual.length !== 32 || expected.length !== 32 || !timingSafeEqual(actual, expected)) {
+        throw new DshConversationSourceError('DSH_CONVERSATION_CHANGED')
+      }
+      return coordinator.launchImport({
+        filename: document.filename,
+        mediaType: document.mediaType,
+        text: document.text,
+        modelSelection: params.modelSelection,
+      }, signal)
+    },
     launchRetry: (params, signal) => coordinator
       ? coordinator.launchRetry(params, signal)
       : Promise.reject(new Error('CORE_UNAVAILABLE')),
@@ -142,6 +176,7 @@ export async function applyProductPlugin(
   }
 
   try {
+    conversationSource = dependencies.createConversationSource(ctx.sessionQuery)
     unregisterRoutes = dependencies.registerRoutes(ctx, state, operations)
     supervisor = dependencies.createSupervisor(ctx, config, contract)
     const adapter = dependencies.createAdapter(ctx, contract, dependencies.packageRoot)

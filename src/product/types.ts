@@ -50,10 +50,32 @@ export interface DocumentPreview extends ImportTextParams {
   extractionPlan: ExtractionPlan
 }
 
+export interface DshConversationSelectionParams {
+  sessionIds: string[]
+}
+
+export interface DshConversationPreview {
+  sessionIds: string[]
+  filename: string
+  mediaType: 'application/vnd.betterlearn.dsh-conversation+markdown'
+  text: string
+  contentDigest: string
+  conversationCount: number
+  messageCount: number
+  byteSize: number
+  characterCount: number
+  extractionPlan: ExtractionPlan
+}
+
 export interface ModelSelectionSnapshot {
   provider: string
   model: string
   reasoningEffort?: string
+}
+
+export interface DshConversationImportParams extends DshConversationSelectionParams {
+  expectedDigest: string
+  modelSelection: ModelSelectionSnapshot
 }
 
 export interface ImportAndPrepareParams extends ImportTextParams {

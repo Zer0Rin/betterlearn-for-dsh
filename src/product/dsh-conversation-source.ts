@@ -20,6 +20,7 @@ export type DshConversationSourceErrorCode =
   | 'DSH_CONVERSATION_EMPTY'
   | 'DSH_CONVERSATION_TOO_LARGE'
   | 'DSH_CONVERSATION_READ_FAILED'
+  | 'DSH_CONVERSATION_CHANGED'
 
 export class DshConversationSourceError extends Error {
   readonly name = 'DshConversationSourceError'

@@ -7,6 +7,7 @@ import {
   name,
   type ProductPluginDependencies,
 } from '../src/product/plugin.js'
+import { DSH_CONVERSATION_MEDIA_TYPE } from '../src/product/dsh-conversation-source.js'
 
 const config = {
   pythonExecutable: '/owned/python3.12',
@@ -35,6 +36,18 @@ function dependencies(options: { startError?: Error } = {}) {
     dispose: vi.fn(async () => { order.push('coordinator:dispose') }),
   }
   const resolver = { resolve: vi.fn() }
+  const conversationDocument = {
+    sessionIds: ['session_a'],
+    filename: 'DSH对话合集-主题.md',
+    mediaType: DSH_CONVERSATION_MEDIA_TYPE,
+    text: '# DSH 对话合集\n\n## 对话：主题',
+    contentDigest: 'd'.repeat(64),
+    conversationCount: 1,
+    messageCount: 2,
+    byteSize: 42,
+    characterCount: 31,
+  }
+  const conversationSource = { read: vi.fn(async () => ({ ...conversationDocument })) }
   const deps: ProductPluginDependencies = {
     packageRoot: '/owned/package',
     loadContract: vi.fn(() => ({
@@ -43,13 +56,14 @@ function dependencies(options: { startError?: Error } = {}) {
     createSupervisor: vi.fn(() => supervisor as never),
     createAdapter: vi.fn(() => ({}) as never),
     createModelSelectionResolver: vi.fn(() => resolver as never),
+    createConversationSource: vi.fn(() => conversationSource as never),
     createCoordinator: vi.fn(() => coordinator as never),
     registerRoutes: vi.fn(() => {
       order.push('routes:register')
       return () => { order.push('routes:dispose') }
     }),
   }
-  return { deps, order, supervisor, coordinator, resolver }
+  return { deps, order, supervisor, coordinator, resolver, conversationSource, conversationDocument }
 }
 
 describe('phase1c product plugin', () => {
@@ -77,7 +91,7 @@ describe('phase1c product plugin', () => {
 
   test('has the exact public identity and service dependencies', () => {
     expect(name).toBe('nobei-phase1c')
-    expect(inject).toEqual(['agents', 'llm', 'subprocess', 'tools', 'webServer', 'workflowEngine'])
+    expect(inject).toEqual(['agents', 'llm', 'sessionQuery', 'subprocess', 'tools', 'webServer', 'workflowEngine'])
   })
 
   test.each([
@@ -92,16 +106,57 @@ describe('phase1c product plugin', () => {
   })
 
   test('registers routes before startup and disposes route, coordinator, supervisor', async () => {
-    const { deps, order, supervisor, resolver, coordinator } = dependencies()
-    const ctx = { subprocess: {} } as never
+    const { deps, order, supervisor, resolver, coordinator, conversationSource, conversationDocument } = dependencies()
+    const sessionQuery = { readSession: vi.fn() }
+    const ctx = { subprocess: {}, sessionQuery } as never
     const dispose = await applyProductPlugin(ctx, config, deps)
     expect(order).toEqual(['routes:register', 'supervisor:start'])
     expect(deps.createModelSelectionResolver).toHaveBeenCalledWith(ctx)
+    expect(deps.createConversationSource).toHaveBeenCalledWith(sessionQuery)
     expect(deps.createCoordinator).toHaveBeenCalledWith(
       supervisor, expect.anything(), resolver,
     )
     const onChange = vi.fn()
     const operations = vi.mocked(deps.registerRoutes).mock.calls[0]![2]
+    const corePreview = {
+      filename: conversationDocument.filename,
+      mediaType: conversationDocument.mediaType,
+      text: conversationDocument.text,
+      byteSize: conversationDocument.byteSize,
+      characterCount: conversationDocument.characterCount,
+      pages: [],
+      extractionPlan: { strategy: 'L1' as const, blocks: [], containers: [], boundaries: [], maxCalls: 1 },
+    }
+    const previewDocument = vi.fn(async () => corePreview)
+    supervisor.withReadyClient.mockImplementation(async (use: (client: { previewDocument: typeof previewDocument }) => unknown) => use({ previewDocument }))
+    await expect(operations.previewDshConversations(['session_a'])).resolves.toEqual({
+      ...conversationDocument,
+      extractionPlan: corePreview.extractionPlan,
+    })
+    expect(conversationSource.read).toHaveBeenCalledWith(['session_a'], undefined)
+    expect(previewDocument).toHaveBeenCalledWith({
+      filename: conversationDocument.filename,
+      mediaType: conversationDocument.mediaType,
+      text: conversationDocument.text,
+    }, undefined)
+    const dshImport = {
+      sessionIds: ['session_a'],
+      expectedDigest: conversationDocument.contentDigest,
+      modelSelection: { provider: 'provider-a', model: 'model-a' },
+    }
+    await operations.importDshConversations(dshImport)
+    expect(coordinator.launchImport).toHaveBeenCalledWith({
+      filename: conversationDocument.filename,
+      mediaType: conversationDocument.mediaType,
+      text: conversationDocument.text,
+      modelSelection: dshImport.modelSelection,
+    }, undefined)
+    coordinator.launchImport.mockClear()
+    await expect(operations.importDshConversations({
+      ...dshImport,
+      expectedDigest: 'e'.repeat(64),
+    })).rejects.toThrow('DSH_CONVERSATION_CHANGED')
+    expect(coordinator.launchImport).not.toHaveBeenCalled()
     operations.watchRun('job_1', onChange)
     expect(coordinator.watchRun).toHaveBeenCalledWith('job_1', onChange)
     const listRuns = vi.fn(async () => ({ runs: [] }))

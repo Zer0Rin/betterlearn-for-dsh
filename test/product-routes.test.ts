@@ -2,6 +2,10 @@ import { createServer, request as httpRequest } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { CoreRpcError } from '../src/product/core-rpc-client.js'
+import {
+  DSH_CONVERSATION_MEDIA_TYPE,
+  DshConversationSourceError,
+} from '../src/product/dsh-conversation-source.js'
 import { GenerationBusyError } from '../src/product/generation-coordinator.js'
 import { ModelSelectionResolutionError } from '../src/product/model-selection-resolver.js'
 import { registerProductRoutes, type ProductOperations } from '../src/product/routes.js'
@@ -12,6 +16,26 @@ const candidateId = `cand_${'b'.repeat(20)}`
 const knowledgePointId = `kp_${'c'.repeat(20)}`
 const idempotencyKey = `idem_${'c'.repeat(20)}`
 const modelSelection = { provider: 'provider-fixture', model: 'model-fixture', reasoningEffort: 'medium' }
+const dshSessionIds = ['session_a', 'session_b']
+const dshDigest = 'd'.repeat(64)
+const dshPreview = {
+  sessionIds: dshSessionIds,
+  filename: 'DSH对话合集-主题-等2个.md',
+  mediaType: DSH_CONVERSATION_MEDIA_TYPE,
+  text: '# DSH 对话合集\n\n## 对话：主题',
+  contentDigest: dshDigest,
+  conversationCount: 2,
+  messageCount: 4,
+  byteSize: 42,
+  characterCount: 31,
+  extractionPlan: {
+    strategy: 'L1' as const,
+    blocks: [],
+    containers: [],
+    boundaries: [],
+    maxCalls: 1,
+  },
+}
 const servers = new Set<ReturnType<typeof createServer>>()
 
 afterEach(async () => {
@@ -23,9 +47,11 @@ afterEach(async () => {
 function operations(override: Partial<ProductOperations> = {}): ProductOperations {
   return {
     previewDocument: vi.fn(async params => ({ ...params, text: 'preview', byteSize: 7, characterCount: 7, pages: [], extractionPlan: { strategy: 'L1', blocks: [], containers: [], boundaries: [], maxCalls: 1 } })) as any,
+    previewDshConversations: vi.fn(async () => dshPreview),
     watchRun: vi.fn(() => vi.fn()),
     getProgress: vi.fn(() => null),
     launchImport: vi.fn(async () => ({ runId, attemptId: `att_${'d'.repeat(20)}`, revision: 2 })),
+    importDshConversations: vi.fn(async () => ({ runId, attemptId: `att_${'d'.repeat(20)}`, revision: 2 })),
     listRuns: vi.fn(async () => ({ runs: [] })),
     getRun: vi.fn(async () => ({ runId, documentId: `doc_${'e'.repeat(20)}`, status: 'generating', stage: 'extract', revision: 2, retryCount: 0, lastEventSeq: 2 })),
     listEvents: vi.fn(async () => ({ events: [], nextAfter: 0 })),
@@ -333,5 +359,122 @@ describe('P3 document preview', () => {
     const response = await send(port, { method: 'POST', path: '/nobei/v1/documents/preview', body: JSON.stringify({ filename: 'large.txt', mediaType: 'text/plain', text: 'x'.repeat(512 * 1024 + 1) }) })
     expect(response.status).toBe(400)
     expect(ops.previewDocument).not.toHaveBeenCalled()
+  })
+})
+
+describe('DSH conversation routes', () => {
+  test('previews an exact conversation selection without caching', async () => {
+    const ops = operations()
+    const { port } = await listen('READY', ops)
+
+    const response = await send(port, {
+      method: 'POST',
+      path: '/nobei/v1/dsh-conversations/preview',
+      body: JSON.stringify({ sessionIds: dshSessionIds }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers['cache-control']).toBe('no-store')
+    expect(ops.previewDshConversations).toHaveBeenCalledWith(dshSessionIds)
+    expect(response.body).toEqual({ ok: true, result: dshPreview })
+    expect(ops.launchImport).not.toHaveBeenCalled()
+  })
+
+  test('imports the previewed selection with its exact digest and model selection', async () => {
+    const ops = operations()
+    const { port } = await listen('READY', ops)
+    const body = { sessionIds: dshSessionIds, expectedDigest: dshDigest, modelSelection }
+
+    const response = await send(port, {
+      method: 'POST',
+      path: '/nobei/v1/dsh-conversations/imports',
+      body: JSON.stringify(body),
+    })
+
+    expect(response.status).toBe(202)
+    expect(ops.importDshConversations).toHaveBeenCalledWith(body)
+  })
+
+  test.each([
+    ['empty ids', '/nobei/v1/dsh-conversations/preview', { sessionIds: [] }],
+    ['too many ids', '/nobei/v1/dsh-conversations/preview', { sessionIds: Array.from({ length: 51 }, (_, index) => `s_${index}`) }],
+    ['duplicate ids', '/nobei/v1/dsh-conversations/preview', { sessionIds: ['same', 'same'] }],
+    ['non-string id', '/nobei/v1/dsh-conversations/preview', { sessionIds: ['valid', 1] }],
+    ['surrogate id', '/nobei/v1/dsh-conversations/preview', { sessionIds: ['\uD800'] }],
+    ['open preview body', '/nobei/v1/dsh-conversations/preview', { sessionIds: ['valid'], extra: true }],
+    ['uppercase digest', '/nobei/v1/dsh-conversations/imports', { sessionIds: ['valid'], expectedDigest: 'A'.repeat(64), modelSelection }],
+    ['short digest', '/nobei/v1/dsh-conversations/imports', { sessionIds: ['valid'], expectedDigest: 'a'.repeat(63), modelSelection }],
+    ['open import body', '/nobei/v1/dsh-conversations/imports', { sessionIds: ['valid'], expectedDigest: dshDigest, modelSelection, text: 'forbidden' }],
+    ['model override', '/nobei/v1/dsh-conversations/imports', { sessionIds: ['valid'], expectedDigest: dshDigest, modelSelection: { ...modelSelection, endpoint: 'https://invalid' } }],
+  ])('rejects %s before operations', async (_name, path, body) => {
+    const ops = operations()
+    const { port } = await listen('READY', ops)
+
+    const response = await send(port, { method: 'POST', path, body: JSON.stringify(body) })
+
+    expect(response).toMatchObject({ status: 400, body: { error: { code: 'REQUEST_INPUT_INVALID' } } })
+    expect(ops.previewDshConversations).not.toHaveBeenCalled()
+    expect(ops.importDshConversations).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ['DSH_CONVERSATION_NOT_FOUND', 404],
+    ['DSH_CONVERSATION_NOT_ORDINARY', 400],
+    ['DSH_CONVERSATION_EMPTY', 400],
+    ['DSH_CONVERSATION_TOO_LARGE', 400],
+    ['DSH_CONVERSATION_READ_FAILED', 503],
+  ] as const)('maps %s to a closed public error', async (code, status) => {
+    const ops = operations({
+      previewDshConversations: vi.fn(async () => { throw new DshConversationSourceError(code) }),
+    })
+    const { port } = await listen('READY', ops)
+
+    const response = await send(port, {
+      method: 'POST', path: '/nobei/v1/dsh-conversations/preview',
+      body: JSON.stringify({ sessionIds: ['valid'] }),
+    })
+
+    expect(response).toEqual(expect.objectContaining({
+      status,
+      body: { ok: false, error: { code } },
+    }))
+  })
+
+  test('returns a conflict when a conversation changed after preview', async () => {
+    const ops = operations({
+      importDshConversations: vi.fn(async () => {
+        throw new DshConversationSourceError('DSH_CONVERSATION_CHANGED' as never)
+      }),
+    })
+    const { port } = await listen('READY', ops)
+
+    const response = await send(port, {
+      method: 'POST', path: '/nobei/v1/dsh-conversations/imports',
+      body: JSON.stringify({ sessionIds: ['valid'], expectedDigest: dshDigest, modelSelection }),
+    })
+
+    expect(response).toMatchObject({
+      status: 409,
+      body: { error: { code: 'DSH_CONVERSATION_CHANGED' } },
+    })
+    expect(ops.launchImport).not.toHaveBeenCalled()
+  })
+
+  test('requires Core readiness and the exact POST methods', async () => {
+    const ops = operations()
+    const starting = await listen('STARTING', ops)
+    const unavailable = await send(starting.port, {
+      method: 'POST', path: '/nobei/v1/dsh-conversations/preview',
+      body: JSON.stringify({ sessionIds: ['valid'] }),
+    })
+    expect(unavailable).toMatchObject({ status: 503, body: { error: { code: 'CORE_UNAVAILABLE' } } })
+    expect(ops.previewDshConversations).not.toHaveBeenCalled()
+
+    const ready = await listen('READY', operations())
+    const wrongMethod = await send(ready.port, {
+      method: 'GET', path: '/nobei/v1/dsh-conversations/imports',
+    })
+    expect(wrongMethod).toMatchObject({ status: 405, body: { error: { code: 'METHOD_NOT_ALLOWED' } } })
+    expect(wrongMethod.headers.allow).toBe('POST')
   })
 })
