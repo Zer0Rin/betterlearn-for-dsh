@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
 import { ImportWorkspace } from './components/ImportWorkspace.js'
 import { ResultSummary } from './components/ResultSummary.js'
 import { ReviewWorkspace } from './components/ReviewWorkspace.js'
@@ -25,7 +25,7 @@ export function NobeiWorkspace({
     sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
   })
   const sourceName = workspace.run?.document.filename ?? '新的学习材料'
-  useEffect(() => onScreenChange?.(workspace.screen), [onScreenChange, workspace.screen])
+  useLayoutEffect(() => onScreenChange?.(workspace.screen), [onScreenChange, workspace.screen])
   const activeModel = workspace.run?.modelSelection ?? workspace.modelSelection
   const unavailableMessage = workspace.serviceUnavailable ? workspaceCopy.unavailable : undefined
   const operationError = unavailableMessage

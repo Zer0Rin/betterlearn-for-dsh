@@ -33,7 +33,7 @@ export function assertPhase1dBrowserResult(value) {
     || !Number.isFinite(entry.resultWidth)
     || entry.reviewWidth <= entry.resultWidth
     || entry.resultWidth <= 0) {
-    fail('CLIENT_FLOATING_LAYOUT_INVALID')
+    fail(`CLIENT_FLOATING_LAYOUT_INVALID:${JSON.stringify(entry)}`)
   }
   if (value.clientModule?.status !== 200
     || value.clientModule.path !== '/plugins/@nobei/dsh-phase1/client.js') {
@@ -198,8 +198,13 @@ export async function openNobeiView(page, runtimeRoot) {
   return { activationStarted: false, surface: 'floating', collapsedOnLoad, hostWidthBefore, hostWidthAfter }
 }
 
-async function floatingPanelWidth(page) {
-  return page.getByTestId('betterlearn-floating-panel')
+async function floatingPanelWidth(page, screen) {
+  const panel = page.locator(`[data-testid="betterlearn-floating-panel"][data-screen="${screen}"]`)
+  await panel.waitFor({ state: 'visible', timeout: 10_000 })
+  await panel.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map(animation => animation.finished))
+  })
+  return panel
     .evaluate(element => element.getBoundingClientRect().width)
 }
 
@@ -371,7 +376,7 @@ async function execute(evidenceRoot) {
       const failureLedger = await ledger(baseUrl, config.ledgerToken).catch(() => undefined)
       throw new Error(`CLIENT_REVIEW_NOT_REACHED:${JSON.stringify({ failureLedger, browserEvents: browserEvents.slice(-20) })}`, { cause: error })
     }
-    const reviewWidth = await floatingPanelWidth(page)
+    const reviewWidth = await floatingPanelWidth(page, 'review')
     if (restoredRunId !== importedRunId) throw new Error('CLIENT_RUN_NOT_RESTORED')
 
     const reviewActions = []
@@ -398,7 +403,7 @@ async function execute(evidenceRoot) {
     if ((await reviewResponse).status() !== 200) throw new Error('CLIENT_REJECT_FAILED')
     reviewActions.push('reject')
     screens.push(await waitForScreen(page, 'result'))
-    const resultWidth = await floatingPanelWidth(page)
+    const resultWidth = await floatingPanelWidth(page, 'result')
 
     const knowledgePointCount = await page.locator('.nobei-client__knowledge-list article').count()
     const screenshotRoot = join(evidenceRoot, 'screenshots')

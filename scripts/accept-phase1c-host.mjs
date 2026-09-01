@@ -203,9 +203,10 @@ export async function prepareAcceptanceRuntime({
   await run([PNPM, 'pnpm@11.23.0', 'pack', '--pack-destination', join(ROOT, 'dist')], { cwd: ROOT, env: process.env })
   await run([PNPM, 'pnpm@11.23.0', '--filter', '@nobei/dsh-phase1c-fake-provider', 'pack', '--pack-destination', join(ROOT, 'acceptance/fake-provider/dist')], { cwd: ROOT, env: process.env })
 
+  const productVersion = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')).version
   const productTarball = join(artifacts, 'nobei-dsh-phase1-0.0.0.tgz')
   const fakeTarball = join(artifacts, 'nobei-dsh-phase1c-fake-provider-0.0.0.tgz')
-  await copyFile(join(ROOT, 'dist', 'nobei-dsh-phase1-0.0.0.tgz'), productTarball)
+  await copyFile(join(ROOT, 'dist', `nobei-dsh-phase1-${productVersion}.tgz`), productTarball)
   await copyFile(join(ROOT, 'acceptance/fake-provider/dist', 'nobei-dsh-phase1c-fake-provider-0.0.0.tgz'), fakeTarball)
 
   const temporaryPrefix = phase === 'phase1d-client' ? 'nobei-phase1d' : 'nobei-phase1c'
