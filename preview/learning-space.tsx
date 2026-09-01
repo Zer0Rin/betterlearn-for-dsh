@@ -1,9 +1,11 @@
 import { useState, type CSSProperties } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BetterLearnGateway, LearningBookshelf } from '../src/client/components/LearningLibrary.js'
+import {
+  BetterLearnGateway, LearningBookComposer, LearningBookshelf,
+} from '../src/client/components/LearningLibrary.js'
 import { LearningSpace } from '../src/client/components/LearningSpace.js'
 import { ResultSummary } from '../src/client/components/ResultSummary.js'
-import { createLearningPreviewCourse } from '../src/client/learning-preview.js'
+import { createLearningBook } from '../src/client/learning-book-library.js'
 import { CLIENT_CSS } from '../src/client/styles.js'
 import type { KnowledgePointSnapshot, RunSnapshot } from '../src/client/types.js'
 
@@ -78,6 +80,10 @@ const run: RunSnapshot = {
   },
 }
 
+const initialBook = createLearningBook({
+  title: '有效学习方法', points, sourceText,
+}, { bookId: 'preview-book-1', createdAt: '2026-09-01T08:00:00.000Z' })
+
 const PREVIEW_CSS = `
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 body { background: #E9EDF5; }
@@ -93,11 +99,13 @@ body { background: #E9EDF5; }
 function PreviewApp() {
   const [expanded, setExpanded] = useState(true)
   const [mode, setMode] = useState<'workbench' | 'learning'>('workbench')
-  const [area, setArea] = useState<'home' | 'knowledge' | 'library'>('home')
+  const [area, setArea] = useState<'home' | 'knowledge' | 'compose' | 'library'>('home')
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
-  const [books, setBooks] = useState([createLearningPreviewCourse(points, sourceText)])
-  const [course, setCourse] = useState(books[0])
+  const [books, setBooks] = useState([initialBook])
+  const [course, setCourse] = useState(initialBook.course)
+  const [draftPoints, setDraftPoints] = useState<KnowledgePointSnapshot[]>()
+  const [newBookId, setNewBookId] = useState<string>()
   const panelStyle = {
     '--betterlearn-user-width': mode === 'learning' ? '1080px' : '460px',
     '--betterlearn-user-height': mode === 'learning' ? '868px' : '720px',
@@ -126,6 +134,7 @@ function PreviewApp() {
                 aria-label="返回 BetterLearn 首页" onClick={() => setArea('home')}>首页</button>}
               <strong>{mode === 'learning' ? 'BetterLearn · 学习'
                 : area === 'knowledge' ? 'BetterLearn · 知识点'
+                : area === 'compose' ? 'BetterLearn · 整理学习书'
                 : area === 'library' ? 'BetterLearn · 学习空间' : 'BetterLearn'}</strong>
             </div>
             <button type="button" aria-label="收起 BetterLearn" onClick={() => setExpanded(false)}>收起</button>
@@ -141,10 +150,27 @@ function PreviewApp() {
               onOpenKnowledge={() => setArea('knowledge')} onOpenLearning={() => setArea('library')} />
           ) : null}
           {mode === 'workbench' && area === 'library' ? (
-            <LearningBookshelf books={books} onOpenKnowledge={() => setArea('knowledge')}
+            <LearningBookshelf books={books} newBookId={newBookId}
+              onOpenKnowledge={() => setArea('knowledge')}
               onOpenBook={book => {
-                setCourse(book)
+                setCourse(book.course)
                 setMode('learning')
+              }} />
+          ) : null}
+          {mode === 'workbench' && area === 'compose' && draftPoints ? (
+            <LearningBookComposer points={draftPoints}
+              onCancel={() => { setDraftPoints(undefined); setArea('knowledge') }}
+              onCreate={draft => {
+                const book = createLearningBook({
+                  title: draft.title, points: draft.points, sourceText,
+                }, {
+                  bookId: `preview-book-${books.length + 1}`,
+                  createdAt: new Date().toISOString(),
+                })
+                setBooks(current => [book, ...current])
+                setNewBookId(book.bookId)
+                setDraftPoints(undefined)
+                setArea('library')
               }} />
           ) : null}
           {mode === 'workbench' && area === 'knowledge' ? (
@@ -152,10 +178,9 @@ function PreviewApp() {
               <div className="nobei-client-layout"><div className="nobei-client">
                 <ResultSummary run={run} candidates={[]} knowledgePoints={points}
                   onUpdate={async () => true} onReset={() => undefined}
-                  onCreateLearningBook={nextPoints => {
-                    const book = createLearningPreviewCourse(nextPoints, sourceText)
-                    setBooks(current => [book, ...current.filter(item => item.courseId !== book.courseId)])
-                    setArea('library')
+                  onOrganizeLearningBook={nextPoints => {
+                    setDraftPoints(nextPoints)
+                    setArea('compose')
                   }} />
               </div></div>
             </div>
