@@ -29,6 +29,10 @@ function sessionSource(current?: string) {
       snapshot = { ...snapshot, ids: next ? [next] : [], current: next }
       listeners.forEach(listener => listener())
     },
+    setRows(ids: string[], byId: Record<string, unknown>, current = snapshot.current) {
+      snapshot = { ...snapshot, ids, byId, current }
+      listeners.forEach(listener => listener())
+    },
   }
 }
 
@@ -166,6 +170,46 @@ describe('BetterLearn floating workbench shell', () => {
     })
 
     expect(storage.getItem).toHaveBeenCalledWith('nobei:phase1d:session:session-b')
+  })
+
+  test('projects refreshed ordinary session rows into the DSH conversation selector', async () => {
+    const source = sessionSource('current')
+    source.setRows(['current', 'ordinary', 'blank', 'child', 'addressed'], {
+      current: { id: 'current', displayTitle: '当前对话', blank: false, updatedAt: 5 },
+      ordinary: { id: 'ordinary', displayTitle: '普通历史', blank: false, updatedAt: 4 },
+      blank: { id: 'blank', displayTitle: '新对话', blank: true, updatedAt: 3 },
+      child: { id: 'child', displayTitle: '内部子任务', blank: false, origin: 'subagent', updatedAt: 2 },
+      addressed: { id: 'addressed', displayTitle: '地址子任务', blank: false, updatedAt: 1 },
+    })
+    const sessions = {
+      list: source,
+      subagentAddress: (id: string) => id === 'addressed' ? { parentSessionId: 'current', childSessionId: id } : undefined,
+    }
+    await act(async () => {
+      renderer = create(<BetterLearnFloatingApp sessions={sessions as never}
+        modelDirectories={modelDirectories} storage={storage as never} api={api} />)
+      await Promise.resolve()
+    })
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    act(() => renderer.root.findByProps({ 'aria-label': '从 DSH 对话提取' }).props.onClick())
+    let output = JSON.stringify(renderer.toJSON())
+    expect(output).toContain('当前对话')
+    expect(output).toContain('普通历史')
+    expect(output).not.toContain('新对话')
+    expect(output).not.toContain('内部子任务')
+    expect(output).not.toContain('地址子任务')
+
+    await act(async () => {
+      source.setRows(['current', 'new'], {
+        current: { id: 'current', displayTitle: '当前对话', blank: false, updatedAt: 6 },
+        new: { id: 'new', displayTitle: '刚刚完成的对话', blank: false, updatedAt: 5 },
+      })
+      await Promise.resolve()
+    })
+    output = JSON.stringify(renderer.toJSON())
+    expect(output).toContain('刚刚完成的对话')
+    expect(output).not.toContain('普通历史')
   })
 
   test('keeps history collapsed by default, expands it independently, and resets it with the panel', async () => {

@@ -1,6 +1,8 @@
 import type {
   ClientApi,
   DocumentPreview,
+  DshConversationImportRequest,
+  DshConversationPreview,
   EventPage,
   GenerationLaunch,
   ImportTextRequest,
@@ -68,6 +70,9 @@ export function createClientApi(): ClientApi {
     previewDocument(input, signal) {
       return post<DocumentPreview>('/nobei/v1/documents/preview', input, signal)
     },
+    previewDshConversations(sessionIds, signal) {
+      return post<DshConversationPreview>('/nobei/v1/dsh-conversations/preview', { sessionIds }, signal)
+    },
     getProgress(runId, signal) {
       return get<GenerationProgress | null>(`/nobei/v1/runs/${encodeURIComponent(runId)}/progress`, signal)
     },
@@ -89,6 +94,9 @@ export function createClientApi(): ClientApi {
     },
     importText(input: ImportTextRequest, signal?: AbortSignal) {
       return post<GenerationLaunch>('/nobei/v1/imports', input, signal)
+    },
+    importDshConversations(input: DshConversationImportRequest, signal?: AbortSignal) {
+      return post<GenerationLaunch>('/nobei/v1/dsh-conversations/imports', input, signal)
     },
     getRun(runId: string, signal?: AbortSignal) {
       return get<RunSnapshot>(`/nobei/v1/runs/${encodeURIComponent(runId)}`, signal)

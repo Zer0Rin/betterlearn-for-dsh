@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import { CoreRpcError } from './core-rpc-client.js'
 import { GenerationBusyError, type GenerationLaunch } from './generation-coordinator.js'
 import { ModelSelectionResolutionError } from './model-selection-resolver.js'
+import { DshConversationSourceError } from './dsh-conversation-source.js'
 import {
   authorizeProductRequest,
   parseProductJsonBody,
@@ -14,6 +15,8 @@ import {
 import type {
   DocumentPreview,
   DocumentPreviewParams,
+  DshConversationImportParams,
+  DshConversationPreview,
   CandidateList,
   CoreObjectResult,
   CoreRunSnapshot,
@@ -21,6 +24,7 @@ import type {
   EventList,
   ImportAndPrepareParams,
   KnowledgePointList,
+  ModelSelectionSnapshot,
   ReviewCandidateParams,
   RetryAndPrepareParams,
   RunHistoryResult,
@@ -30,9 +34,11 @@ import type {
 
 export interface ProductOperations {
   previewDocument(params: DocumentPreviewParams, signal?: AbortSignal): Promise<DocumentPreview>
+  previewDshConversations(sessionIds: string[], signal?: AbortSignal): Promise<DshConversationPreview>
   watchRun(runId: string, onChange: (progress?: GenerationProgress) => void): () => void
   getProgress(runId: string): GenerationProgress | null
   launchImport(params: ImportAndPrepareParams, signal?: AbortSignal): Promise<GenerationLaunch>
+  importDshConversations(params: DshConversationImportParams, signal?: AbortSignal): Promise<GenerationLaunch>
   listRuns(signal?: AbortSignal): Promise<RunHistoryResult>
   getRun(runId: string, signal?: AbortSignal): Promise<CoreRunSnapshot>
   listEvents(runId: string, after: number, signal?: AbortSignal): Promise<EventList>
@@ -51,6 +57,8 @@ interface SupervisorState {
 type RouteMatch =
   | { kind: 'preview'; method: 'POST' }
   | { kind: 'import'; method: 'POST' }
+  | { kind: 'dsh-preview'; method: 'POST' }
+  | { kind: 'dsh-import'; method: 'POST' }
   | { kind: 'stream'; method: 'GET'; runId: string }
   | { kind: 'progress'; method: 'GET'; runId: string }
   | { kind: 'runs'; method: 'GET' }
@@ -82,6 +90,8 @@ function sendError(res: ServerResponse, status: number, code: string, extra?: Re
 function matchRoute(url: URL, requestMethod?: string): RouteMatch | undefined {
   if (url.pathname === '/nobei/v1/documents/preview' && url.search === '') return { kind: 'preview', method: 'POST' }
   if (url.pathname === '/nobei/v1/imports' && url.search === '') return { kind: 'import', method: 'POST' }
+  if (url.pathname === '/nobei/v1/dsh-conversations/preview' && url.search === '') return { kind: 'dsh-preview', method: 'POST' }
+  if (url.pathname === '/nobei/v1/dsh-conversations/imports' && url.search === '') return { kind: 'dsh-import', method: 'POST' }
   if (url.pathname === '/nobei/v1/runs' && url.search === '') return { kind: 'runs', method: 'GET' }
   let match = /^\/nobei\/v1\/runs\/([^/]+)$/.exec(url.pathname)
   if (match && url.search === '') return requestMethod === 'DELETE'
@@ -141,38 +151,71 @@ function validModelText(value: unknown, maxLength: number): value is string {
     && !/[\uD800-\uDFFF]/.test(value)
 }
 
+function parseModelSelection(value: unknown): ModelSelectionSnapshot | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const selection = value as Record<string, unknown>
+  const selectionKeys = Object.keys(selection).sort().join(',')
+  if (
+    (selectionKeys !== 'model,provider' && selectionKeys !== 'model,provider,reasoningEffort')
+    || !validModelText(selection.provider, 64)
+    || !validModelText(selection.model, 128)
+    || ('reasoningEffort' in selection && !validModelText(selection.reasoningEffort, 64))
+  ) return undefined
+  return {
+    provider: selection.provider,
+    model: selection.model,
+    ...('reasoningEffort' in selection
+      ? { reasoningEffort: selection.reasoningEffort as string }
+      : {}),
+  }
+}
+
 function parseImport(value: unknown): ImportAndPrepareParams | undefined {
   if (!exactObject(value, ['filename', 'mediaType', 'text', 'modelSelection'])) return undefined
   const { filename, mediaType, text, modelSelection } = value
-  if (
-    modelSelection === null
-    || typeof modelSelection !== 'object'
-    || Array.isArray(modelSelection)
-  ) return undefined
-  const selection = modelSelection as Record<string, unknown>
-  const selectionKeys = Object.keys(selection).sort().join(',')
+  const parsedSelection = parseModelSelection(modelSelection)
   if (
     typeof filename !== 'string' || filename.length < 1 || filename.length > 255
     || filename === '.' || filename === '..' || /[\\/\0]/.test(filename)
     || (mediaType !== 'text/plain' && mediaType !== 'text/markdown' && mediaType !== 'application/pdf')
     || typeof text !== 'string' || text.length === 0
     || Buffer.byteLength(text, 'utf8') > 512 * 1024
-    || (selectionKeys !== 'model,provider' && selectionKeys !== 'model,provider,reasoningEffort')
-    || !validModelText(selection.provider, 64)
-    || !validModelText(selection.model, 128)
-    || ('reasoningEffort' in selection && !validModelText(selection.reasoningEffort, 64))
+    || !parsedSelection
   ) return undefined
   return {
     filename,
     mediaType,
     text,
-    modelSelection: {
-      provider: selection.provider,
-      model: selection.model,
-      ...('reasoningEffort' in selection
-        ? { reasoningEffort: selection.reasoningEffort as string }
-        : {}),
-    },
+    modelSelection: parsedSelection,
+  }
+}
+
+function validSessionIds(value: unknown): value is string[] {
+  return Array.isArray(value)
+    && value.length >= 1
+    && value.length <= 50
+    && value.every(sessionId => validModelText(sessionId, 256))
+    && new Set(value).size === value.length
+}
+
+function parseDshSelection(value: unknown): string[] | undefined {
+  if (!exactObject(value, ['sessionIds']) || !validSessionIds(value.sessionIds)) return undefined
+  return [...value.sessionIds]
+}
+
+function parseDshImport(value: unknown): DshConversationImportParams | undefined {
+  if (!exactObject(value, ['sessionIds', 'expectedDigest', 'modelSelection'])) return undefined
+  const selection = parseModelSelection(value.modelSelection)
+  if (
+    !validSessionIds(value.sessionIds)
+    || typeof value.expectedDigest !== 'string'
+    || !/^[0-9a-f]{64}$/.test(value.expectedDigest)
+    || !selection
+  ) return undefined
+  return {
+    sessionIds: [...value.sessionIds],
+    expectedDigest: value.expectedDigest,
+    modelSelection: selection,
   }
 }
 
@@ -186,7 +229,8 @@ function parsePreview(value: unknown): DocumentPreviewParams | undefined {
     && typeof contentBase64 === 'string' && contentBase64.length > 0
     && contentBase64.length <= 4 * Math.ceil(5 * 1024 * 1024 / 3)) return { filename, mediaType, contentBase64 }
   if (exactObject(input, ['filename', 'mediaType', 'text'])
-    && (mediaType === 'text/plain' || mediaType === 'text/markdown' || mediaType === 'application/pdf')
+    && (mediaType === 'text/plain' || mediaType === 'text/markdown' || mediaType === 'application/pdf'
+      || mediaType === 'application/vnd.betterlearn.dsh-conversation+markdown')
     && typeof text === 'string' && text.length > 0 && Buffer.byteLength(text, 'utf8') <= 512 * 1024) return { filename, mediaType, text }
   return undefined
 }
@@ -299,6 +343,8 @@ export function registerProductRoutes(
       }
       const previewParams = route.kind === 'preview' ? parsePreview(body) : undefined
       const importParams = route.kind === 'import' ? parseImport(body) : undefined
+      const dshPreviewParams = route.kind === 'dsh-preview' ? parseDshSelection(body) : undefined
+      const dshImportParams = route.kind === 'dsh-import' ? parseDshImport(body) : undefined
       const retryParams = route.kind === 'retry' ? parseRetry(body, route.runId) : undefined
       const reviewParams = route.kind === 'review' ? parseReview(body, route.candidateId) : undefined
       const updateParams = route.kind === 'knowledge-point-update'
@@ -307,6 +353,8 @@ export function registerProductRoutes(
       if (
         (route.kind === 'preview' && !previewParams)
         || (route.kind === 'import' && !importParams)
+        || (route.kind === 'dsh-preview' && !dshPreviewParams)
+        || (route.kind === 'dsh-import' && !dshImportParams)
         || (route.kind === 'retry' && !retryParams)
         || (route.kind === 'review' && !reviewParams)
         || (route.kind === 'knowledge-point-update' && !updateParams)
@@ -342,6 +390,8 @@ export function registerProductRoutes(
         let result: unknown
         if (route.kind === 'preview') result = await operations.previewDocument(previewParams as DocumentPreviewParams)
         else if (route.kind === 'import') result = await operations.launchImport(importParams as ImportAndPrepareParams)
+        else if (route.kind === 'dsh-preview') result = await operations.previewDshConversations(dshPreviewParams as string[])
+        else if (route.kind === 'dsh-import') result = await operations.importDshConversations(dshImportParams as DshConversationImportParams)
         else if (route.kind === 'runs') result = await operations.listRuns()
         else if (route.kind === 'run') result = await operations.getRun(route.runId)
         else if (route.kind === 'run-delete') result = await operations.deleteRun(route.runId)
@@ -353,13 +403,20 @@ export function registerProductRoutes(
         else if (route.kind === 'knowledge-points') result = await operations.listKnowledgePoints(route.runId)
         else result = await operations.updateKnowledgePoint(updateParams as UpdateKnowledgePointParams)
         if (!res.destroyed && !res.writableEnded) {
-          sendJson(res, route.kind === 'import' || route.kind === 'retry' ? 202 : 200, { ok: true, result })
+          sendJson(res, route.kind === 'import' || route.kind === 'dsh-import' || route.kind === 'retry' ? 202 : 200, { ok: true, result })
         }
       } catch (error) {
         if (res.destroyed || res.writableEnded) return
         if (error instanceof GenerationBusyError) return sendError(res, 429, 'GENERATION_BUSY')
         if (error instanceof ModelSelectionResolutionError) {
           return sendError(res, 422, error.code)
+        }
+        if (error instanceof DshConversationSourceError) {
+          const status = error.code === 'DSH_CONVERSATION_NOT_FOUND' ? 404
+            : error.code === 'DSH_CONVERSATION_READ_FAILED' ? 503
+              : error.code === 'DSH_CONVERSATION_CHANGED' ? 409
+                : 400
+          return sendError(res, status, error.code)
         }
         if (error instanceof CoreRpcError) {
           const mapped = publicCoreError(error)

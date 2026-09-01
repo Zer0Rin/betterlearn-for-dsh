@@ -23,9 +23,15 @@ export interface HelloResult {
   dataRootKind: 'isolated-phase1'
 }
 
+export type DocumentMediaType =
+  | 'text/plain'
+  | 'text/markdown'
+  | 'application/pdf'
+  | 'application/vnd.betterlearn.dsh-conversation+markdown'
+
 export interface ImportTextParams {
   filename: string
-  mediaType: 'text/plain' | 'text/markdown' | 'application/pdf'
+  mediaType: DocumentMediaType
   text: string
 }
 
@@ -44,10 +50,32 @@ export interface DocumentPreview extends ImportTextParams {
   extractionPlan: ExtractionPlan
 }
 
+export interface DshConversationSelectionParams {
+  sessionIds: string[]
+}
+
+export interface DshConversationPreview {
+  sessionIds: string[]
+  filename: string
+  mediaType: 'application/vnd.betterlearn.dsh-conversation+markdown'
+  text: string
+  contentDigest: string
+  conversationCount: number
+  messageCount: number
+  byteSize: number
+  characterCount: number
+  extractionPlan: ExtractionPlan
+}
+
 export interface ModelSelectionSnapshot {
   provider: string
   model: string
   reasoningEffort?: string
+}
+
+export interface DshConversationImportParams extends DshConversationSelectionParams {
+  expectedDigest: string
+  modelSelection: ModelSelectionSnapshot
 }
 
 export interface ImportAndPrepareParams extends ImportTextParams {
@@ -125,7 +153,7 @@ export interface CoreRunSnapshot extends Record<string, unknown> {
 
 export interface RunHistorySummary {
   runId: OpaqueId
-  sourceType: 'document'
+  sourceType: 'document' | 'dsh_conversation'
   sourceLabel: string
   status: string
   stage: string

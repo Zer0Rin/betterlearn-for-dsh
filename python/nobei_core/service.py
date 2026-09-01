@@ -73,7 +73,13 @@ from nobei_core.repository import (
 
 
 
-_SUPPORTED_MEDIA_TYPES = frozenset({"text/plain", "text/markdown", "application/pdf"})
+_DSH_CONVERSATION_MEDIA_TYPE = "application/vnd.betterlearn.dsh-conversation+markdown"
+_SUPPORTED_MEDIA_TYPES = frozenset({
+    "text/plain",
+    "text/markdown",
+    "application/pdf",
+    _DSH_CONVERSATION_MEDIA_TYPE,
+})
 _EVENT_PAGE_LIMIT = 200
 _PROMPT_VERSION = "l1-v3"
 _REVIEW_FIELDS = frozenset(
@@ -1064,7 +1070,11 @@ class Phase1Core:
         with self._database.read_snapshot() as con:
             return {"runs": [{
                 "runId": row["run_id"],
-                "sourceType": "document",
+                "sourceType": (
+                    "dsh_conversation"
+                    if row["media_type"] == _DSH_CONVERSATION_MEDIA_TYPE
+                    else "document"
+                ),
                 "sourceLabel": row["filename"],
                 "status": row["status"],
                 "stage": row["stage"],

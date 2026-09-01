@@ -67,6 +67,40 @@ async function workspace(status?: RunSnapshot['status']) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('phase1d composed workspace', () => {
+  test('shows selectable DSH conversations in the independent import step', async () => {
+    const api = apiFor()
+    api.previewDshConversations = vi.fn(async () => ({
+      sessionIds: ['session-a'],
+      filename: 'DSH对话合集-复习.md',
+      mediaType: 'application/vnd.betterlearn.dsh-conversation+markdown',
+      text: '# DSH 对话合集',
+      contentDigest: 'd'.repeat(64),
+      conversationCount: 1,
+      messageCount: 2,
+      byteSize: 18,
+      characterCount: 12,
+      extractionPlan: { strategy: 'L1', maxCalls: 1 },
+    }))
+    let renderer!: ReactTestRenderer
+    await act(async () => {
+      renderer = create(<NobeiWorkspace sessionId="session" api={api} storage={new MemoryStorage()}
+        scheduler={terminalScheduler} modelDirectories={modelDirectories} ordinarySession
+        conversations={[
+          { sessionId: 'session-a', title: '复习问题', updatedAt: 2 },
+          { sessionId: 'session-b', title: '相关补充', updatedAt: 1 },
+        ]} />)
+      await Promise.resolve(); await Promise.resolve()
+    })
+
+    act(() => renderer.root.findByProps({ 'aria-label': '从 DSH 对话提取' }).props.onClick())
+    const output = JSON.stringify(renderer.toJSON())
+    expect(output).toContain('复习问题')
+    expect(output).toContain('相关补充')
+    expect(api.previewDshConversations).not.toHaveBeenCalled()
+    expect(api.importText).not.toHaveBeenCalled()
+    act(() => renderer.unmount())
+  })
+
   test('reflects a DSH model switch in the import card before a new task is created', async () => {
     const listeners = new Set<() => void>()
     let state = { current: modelSelection, routable: true as boolean | null, status: 'ready' as const }
@@ -132,8 +166,7 @@ describe('phase1d composed workspace', () => {
         scheduler={terminalScheduler} modelDirectories={{ directoryFor: () => directory }} ordinarySession />)
       await Promise.resolve(); await Promise.resolve()
     })
-    const pasteTab = renderer.root.findAllByType('button').find(node => node.children.join('') === '粘贴文本')!
-    act(() => pasteTab.props.onClick())
+    act(() => renderer.root.findByProps({ 'aria-label': '粘贴正文' }).props.onClick())
     const textarea = () => renderer.root.findByProps({ 'data-testid': 'nobei-paste-text' })
     act(() => textarea().props.onChange({ currentTarget: { value: '模型失败也不能丢失' } }))
     await act(async () => {
@@ -157,8 +190,7 @@ describe('phase1d composed workspace', () => {
         scheduler={terminalScheduler} modelDirectories={modelDirectories} ordinarySession />)
     })
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
-    const pasteTab = renderer.root.findAllByType('button').find(node => node.children.join('') === '粘贴文本')!
-    act(() => pasteTab.props.onClick())
+    act(() => renderer.root.findByProps({ 'aria-label': '粘贴正文' }).props.onClick())
     const textarea = () => renderer.root.findByProps({ 'data-testid': 'nobei-paste-text' })
     act(() => textarea().props.onChange({ currentTarget: { value: '不能丢失的正文' } }))
     await act(async () => renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }))

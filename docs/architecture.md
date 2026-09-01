@@ -25,7 +25,8 @@ document.body
 
 ### Client
 
-- 预览文本/PDF及实际提取计划、调用上限，显示任务状态和候选审核界面；
+- 提供独立的知识来源入口，选择一个或多个普通 DSH 对话，或导入文本/PDF；
+- 预览完整合并对话、文本/PDF及实际提取计划、调用上限，显示任务状态和候选审核界面；
 - 订阅 DSH 当前会话与 model directory，随会话切换恢复对应任务和模型选择；
 - 只在创建新任务时提交模型选择，不自行保存 DSH 设置；
 - 不持有业务数据库。
@@ -34,13 +35,18 @@ document.body
 
 浮窗入口直接订阅 DSH 的 `sessions.list` 与 model directory：当前会话变化时切换 BetterLearn 工作区，菜单切换即时更新新任务的模型显示；点击提取时读取最新快照，避免尚未重绘时提交旧选择。任务恢复与轮询仍只跟随会话/任务，目录更新不重新生成已有任务。
 
+可选 DSH 对话同样来自 `sessions.list`，但客户端只负责普通会话筛选、搜索、多选和显示，不读取消息正文。正文在 Host 预览接口中生成；正式提交必须携带预览摘要，不能跳过预览。
+
 ### Host
 
 - 注册 `/nobei/v1/*` 产品路由；
+- 通过 `ctx.sessionQuery` 读取用户显式选择的普通 DSH 会话，并生成白名单正文；
 - 管理常驻 Python Core 的启动、握手、超时与回收；
 - 调用 DSH workflow / LLM 接缝；
 - 将 Core 已冻结的 provider、model、reasoning effort 安装到生成 Agent；
 - 不成为第二业务事实源。
+
+DSH 对话适配器只接受 append-origin 的用户文字块和模型可见文字块。system prompt、reasoning、工具调用/结果、插件注入、替换面、图片/未知块、子 Agent 来源全部丢弃。多个会话按列表顺序合并，最多 50 个、UTF-8 正文最多 512 KiB；不截断。预览返回 SHA-256 摘要，提交时重新读取并以常量时间比较摘要，变化则返回冲突并要求重新预览。
 
 Host从包入口导出Schemastery `Config`，Cordis加载和配置更新、直接调用`applyProductPlugin`使用同一份规则，替代原手写校验；有效值与原有拒绝范围不变。`pythonExecutable`、`dataRoot`、`ownershipToken`均由维护CLI提供且必填，没有可跨安装复用的默认路径或token。Schema不等于设置界面，本次没有新增设置卡片或配置项。
 
@@ -67,8 +73,9 @@ Host从包入口导出Schemastery `Config`，Cordis加载和配置更新、直�
 4. 接受、修改、拒绝均由 Core 的事务和幂等键裁决。
 5. 结果页再次编辑正式知识点时，Core 在单一事务中更新知识点、审核分类、计数和 run revision；原始候选不变，也不会再次调用模型。
 6. 删除历史任务时，Core 删除文档拥有的完整 run 图及对应审核幂等记录。活动任务由 Host 先取消 provider flight，再执行同一删除命令，因此不会留下“已取消”历史项。
-5. Host 崩溃后的恢复以 Core 持久状态为准。
-6. 构建、单元测试和 replay 不产生真实模型费用。
+7. DSH 对话任务只以用户显式选择和完整预览为入口，内部宿主上下文永不成为提取材料。
+8. Host 崩溃后的恢复以 Core 持久状态为准。
+9. 构建、单元测试和 replay 不产生真实模型费用。
 
 模型配置解析与生成是两个步骤：`DshModelSelectionResolver`调用`ctx.llm.resolveCallConfig`解析选择；`StructuredGenerationAdapter`通过`workflowEngine`创建独立子Agent执行规划或提取，而非自行直连provider的流接口。插件提供的prompt、Schema、调用成本与缓存边界见[Model Experience](../README.md#model-experience)。
 
@@ -109,6 +116,10 @@ SSE 不可用或断开时关闭该连接，原有 1→2→4→8 秒轮询继续�
 
 Client任务恢复只随会话/存储生命周期发生，不随DSH模型目录对象刷新重放旧任务。显示证据时按Unicode字符切片；只滚动原文区域。候选目录与插件面板有各自滚动范围，容器宽度决定审核列布局。
 
-## 7. P4 维护边界
+## 7. DSH 历史对话输入
+
+`POST /nobei/v1/dsh-conversations/preview` 只读会话并返回完整过滤正文、统计、提取计划和摘要，不创建任务或调用模型。`POST /nobei/v1/dsh-conversations/imports` 使用相同选择重新读取，摘要一致才创建一个任务。Core 将其作为私有 DSH 对话媒体类型保存，因此全局历史能显示正确来源；普通 `/imports` 仍只接受公开文本/PDF类型，不能伪造该私有来源。
+
+## 8. P4 维护边界
 
 CLI管理专用DSH profile、Python环境和插件安装，不增加后台服务。SQLite在线backup支持运行中一致备份；restore仅在显式维护时校验所选备份并持已有CoreLease，先保存当前库，再恢复。正常业务读写不会因此增加检查。卸载不删除数据库或备份。

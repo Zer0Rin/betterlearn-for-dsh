@@ -14,6 +14,7 @@ import { modelSelectionInjection, type ModelDirectoryResolverPort } from './mode
 import { ensureClientStyles } from './styles.js'
 import type { ClientApi, KnowledgePointSnapshot } from './types.js'
 import type { WorkspaceScreen } from './use-nobei-workspace.js'
+import { selectableDshConversations, type DshConversationSummary } from './dsh-conversation-sessions.js'
 import {
   clampWorkbenchSize,
   defaultWorkbenchSize,
@@ -54,7 +55,8 @@ function currentViewport(): ViewportSize {
 
 interface FloatingSessionWorkspaceProps {
   sessionId: string
-  sessions: Pick<ISessions, 'subagentAddress'>
+  ordinarySession: boolean
+  conversations: DshConversationSummary[]
   modelDirectories: ModelDirectoryResolverPort
   storage: Storage
   api: ClientApi
@@ -64,9 +66,9 @@ interface FloatingSessionWorkspaceProps {
 }
 
 function FloatingSessionWorkspace({
-  sessionId, sessions, modelDirectories, storage, api, onScreenChange, historyOpen, onStartLearning,
+  sessionId, ordinarySession, conversations, modelDirectories, storage, api, onScreenChange, historyOpen,
+  onStartLearning,
 }: FloatingSessionWorkspaceProps) {
-  const ordinarySession = sessions.subagentAddress(sessionId as never) === undefined
   const face = useMemo(() => modelSelectionInjection(modelDirectories, sessionId, ordinarySession),
     [modelDirectories, ordinarySession, sessionId])
   const modelDirectoryState = useSyncExternalStore(
@@ -78,7 +80,7 @@ function FloatingSessionWorkspace({
     ordinarySession={ordinarySession} modelDirectoryState={modelDirectoryState}
     loadModelSelection={face.loadModelSelection} readModelDirectory={face.readModelDirectory}
     onScreenChange={onScreenChange} historyOpen={historyOpen}
-    onStartLearning={onStartLearning} />
+    onStartLearning={onStartLearning} conversations={conversations} />
 }
 
 export function BetterLearnFloatingApp({
@@ -90,6 +92,14 @@ export function BetterLearnFloatingApp({
     () => sessions.list.getSnapshot(),
   )
   const sessionId = sessionState.current === undefined ? undefined : String(sessionState.current)
+  const conversations = useMemo(() => selectableDshConversations(
+    sessionState,
+    id => sessions.subagentAddress(id),
+  ), [sessionState, sessions])
+  const currentRow = sessionState.current === undefined ? undefined : sessionState.byId[sessionState.current]
+  const ordinarySession = sessionState.current !== undefined
+    && currentRow?.origin !== 'subagent'
+    && sessions.subagentAddress(sessionState.current) === undefined
   const [expanded, setExpanded] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [screen, setScreen] = useState<WorkbenchScreen>(sessionId === undefined ? 'empty' : 'import')
@@ -282,7 +292,8 @@ export function BetterLearnFloatingApp({
             onExit={exitLearning} />
           : null}
         <div className="betterlearn-floating-workbench" hidden={mode === 'learning'}>
-          <FloatingSessionWorkspace key={sessionId} sessionId={sessionId} sessions={sessions}
+          <FloatingSessionWorkspace key={sessionId} sessionId={sessionId} ordinarySession={ordinarySession}
+            conversations={conversations}
             modelDirectories={modelDirectories} storage={storage} api={clientApi}
             onScreenChange={setScreen} historyOpen={historyOpen} onStartLearning={enterLearning} />
         </div>

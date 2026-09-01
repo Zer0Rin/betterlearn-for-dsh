@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ClientApi, DocumentPreview, ImportTextInput } from './types.js'
+import type { ClientApi, DocumentPreview, DocumentPreviewTextInput } from './types.js'
 
 export function documentPreviewError(error: unknown): string {
   const code = error instanceof Error ? error.message : ''
@@ -11,11 +11,11 @@ export function documentPreviewError(error: unknown): string {
 }
 
 export function useDocumentPreview(
-  input: ImportTextInput | undefined,
+  input: DocumentPreviewTextInput | undefined,
   previewDocument: ClientApi['previewDocument'],
 ) {
   const [revision, setRevision] = useState(0)
-  const [resolved, setResolved] = useState<{ input: ImportTextInput; value?: DocumentPreview; error?: string }>()
+  const [resolved, setResolved] = useState<{ input: DocumentPreviewTextInput; value?: DocumentPreview; error?: string }>()
   useEffect(() => {
     if (!input || !previewDocument) return
     const abort = new AbortController()

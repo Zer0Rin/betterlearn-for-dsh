@@ -168,6 +168,34 @@ export const CLIENT_CSS = `
 .nobei-client__workspace { max-width: 1480px; margin: 0 auto; }
 .nobei-client__import, .nobei-client__progress, .nobei-client__result { max-width: 820px; margin: 0 auto; padding: clamp(22px, 4vw, 44px); border: 1px solid var(--nobei-line); border-radius: 18px; background: var(--nobei-surface); box-shadow: 0 18px 46px rgb(23 32 51 / 0.07); }
 .nobei-client__import header > p:last-child { max-width: 58ch; margin-block-start: 10px; color: var(--nobei-muted); }
+.nobei-client__source-cards { display: grid; gap: 12px; margin-block-start: 26px; }
+.nobei-client__source-cards button { display: grid; gap: 5px; width: 100%; border: 1px solid var(--nobei-line); border-radius: 13px; padding: 17px 18px; text-align: start; color: var(--nobei-ink); background: var(--nobei-paper); }
+.nobei-client__source-cards button:hover { border-color: color-mix(in srgb, var(--nobei-action) 45%, var(--nobei-line)); background: color-mix(in srgb, var(--nobei-action) 6%, var(--nobei-surface)); }
+.nobei-client__source-cards button:first-child { border-inline-start: 4px solid var(--nobei-action); }
+.nobei-client__source-cards span { color: var(--nobei-muted); font-size: 0.82rem; line-height: 1.5; }
+.nobei-client__back { margin-block-start: 18px; border: 0; padding: 0; color: var(--nobei-action); background: transparent; font-weight: 700; }
+.nobei-client__conversation-import { position: relative; }
+.nobei-client__conversation-search { display: grid; gap: 7px; margin-block-start: 22px; color: var(--nobei-muted); font-size: 0.82rem; font-weight: 700; }
+.nobei-client__conversation-search input { width: 100%; border: 1px solid var(--nobei-line); border-radius: 10px; padding: 10px 12px; color: var(--nobei-ink); background: var(--nobei-surface); }
+.nobei-client__conversation-selection-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-block: 14px 9px; }
+.nobei-client__conversation-selection-meta span { color: var(--nobei-muted); font: 0.74rem/1.4 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.nobei-client__conversation-list { display: grid; gap: 7px; max-height: min(42vh, 440px); overflow: auto; padding: 4px; border-block: 1px solid var(--nobei-line); }
+.nobei-client__conversation-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 11px; align-items: start; border: 1px solid transparent; border-radius: 10px; padding: 11px; cursor: pointer; }
+.nobei-client__conversation-row:hover { border-color: var(--nobei-line); background: var(--nobei-paper); }
+.nobei-client__conversation-row input { margin-block-start: 4px; accent-color: var(--nobei-action); }
+.nobei-client__conversation-row > span { display: grid; min-width: 0; gap: 3px; }
+.nobei-client__conversation-row strong { overflow-wrap: anywhere; }
+.nobei-client__conversation-row time { color: var(--nobei-muted); font: 0.7rem/1.35 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.nobei-client__conversation-empty { padding: 22px 8px; color: var(--nobei-muted); text-align: center; }
+.nobei-client__conversation-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-block: 20px 10px; }
+.nobei-client__conversation-stats div { min-width: 0; border: 1px solid var(--nobei-line); border-radius: 10px; padding: 10px; background: var(--nobei-paper); }
+.nobei-client__conversation-stats dt { color: var(--nobei-muted); font-size: 0.7rem; }
+.nobei-client__conversation-stats dd { margin: 2px 0 0; overflow-wrap: anywhere; font-weight: 700; }
+.nobei-client__conversation-plan, .nobei-client__conversation-model { color: var(--nobei-muted); font: 0.76rem/1.45 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.nobei-client__conversation-preview { max-height: min(48vh, 520px); margin-block: 12px; overflow: auto; border: 1px solid var(--nobei-line); border-radius: 11px; padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--nobei-ink); background: var(--nobei-paper); font: 0.82rem/1.65 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.nobei-client__conversation-actions { position: sticky; bottom: -1px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-block-start: 16px; border-block-start: 1px solid var(--nobei-line); padding-block-start: 12px; background: var(--nobei-surface); }
+.nobei-client__conversation-actions button { margin: 0; border: 1px solid var(--nobei-line); border-radius: 9px; padding: 9px 13px; color: var(--nobei-action); background: var(--nobei-surface); font-weight: 700; }
+.nobei-client__conversation-actions .nobei-client__primary { border-color: var(--nobei-action); color: #FFFFFF; background: var(--nobei-action); }
 .nobei-client__tabs { display: flex; gap: 6px; margin-block: 28px 20px; padding: 4px; border-radius: 12px; background: var(--nobei-paper); }
 .nobei-client__tabs button { flex: 1; padding: 10px 16px; border: 0; border-radius: 9px; color: var(--nobei-muted); background: transparent; }
 .nobei-client__tabs button[aria-selected="true"] { color: var(--nobei-ink); background: var(--nobei-surface); box-shadow: 0 2px 9px rgb(23 32 51 / 0.08); }
@@ -365,6 +393,7 @@ export const CLIENT_CSS = `
   .nobei-client__candidate-nav button { width: auto; flex: 1 1 150px; }
   .nobei-client__evidence-reader { grid-column: 1; }
   .nobei-client__result-counts { grid-template-columns: 1fr; }
+  .nobei-client__conversation-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .betterlearn-floating-panel { transition-duration: 0.01ms; }
@@ -411,6 +440,9 @@ export const CLIENT_CSS = `
   .nobei-client__import, .nobei-client__progress, .nobei-client__result { padding: 18px 15px; border-radius: 13px; }
   .nobei-client__tabs { margin-block: 18px 14px; }
   .nobei-client__tabs button { padding: 8px 10px; }
+  .nobei-client__source-cards button { padding: 13px 14px; }
+  .nobei-client__conversation-actions { justify-content: stretch; }
+  .nobei-client__conversation-actions button { flex: 1 1 135px; }
   .nobei-client__input-panel input, .nobei-client__input-panel textarea, .nobei-client__candidate-card input, .nobei-client__candidate-card textarea { padding: 9px 10px; }
   .nobei-client__result-counts { gap: 7px; margin-block: 18px; }
   .nobei-client__result-counts div { padding: 11px 9px; }

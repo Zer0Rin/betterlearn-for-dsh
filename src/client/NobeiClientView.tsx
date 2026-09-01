@@ -7,6 +7,7 @@ import { RunProgress } from './components/RunProgress.js'
 import type { PollScheduler } from './poll-run.js'
 import { modelSelectionLabel, type ModelSelectionInput } from './model-directory-bridge.js'
 import type { ClientApi, KnowledgePointSnapshot } from './types.js'
+import type { DshConversationSummary } from './dsh-conversation-sessions.js'
 import { useNobeiWorkspace, type WorkspaceScreen } from './use-nobei-workspace.js'
 import { workspaceCopy } from './workspace-copy.js'
 
@@ -18,11 +19,12 @@ export interface NobeiWorkspaceProps extends ModelSelectionInput {
   onScreenChange?(screen: WorkspaceScreen): void
   historyOpen?: boolean
   onStartLearning?(points: KnowledgePointSnapshot[], sourceText: string): void
+  conversations?: DshConversationSummary[]
 }
 
 export function NobeiWorkspace({
   sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
-  onScreenChange, historyOpen = false, onStartLearning,
+  onScreenChange, historyOpen = false, onStartLearning, conversations = [],
 }: NobeiWorkspaceProps) {
   const workspace = useNobeiWorkspace({
     sessionId, api, storage, modelDirectoryState, loadModelSelection, readModelDirectory, ordinarySession, scheduler,
@@ -82,6 +84,8 @@ export function NobeiWorkspace({
       <div className="nobei-client__workspace" data-workspace-screen={workspace.screen}>
         {workspace.screen === 'import' && <ImportWorkspace submitting={workspace.busy}
           error={operationError} onSubmit={workspace.importText} previewDocument={api.previewDocument}
+          conversations={conversations} previewDshConversations={api.previewDshConversations}
+          onSubmitDsh={workspace.importDshConversations}
           modelSelection={workspace.modelSelection} modelStatus={workspace.modelDirectoryStatus}
           ordinarySession={workspace.ordinarySession} />}
         {workspace.screen === 'processing' && <RunProgress run={workspace.run} progress={workspace.progress} busy={workspace.busy}

@@ -6,18 +6,24 @@ import type { DocumentPreview, DocumentPreviewRequest } from '../src/client/type
 const fixedNow = new Date('2026-08-29T12:00:00+08:00')
 const modelSelection = { provider: 'provider-a', model: 'model-a', reasoningEffort: 'high' }
 
-function render(props: Partial<Parameters<typeof ImportWorkspace>[0]> = {}) {
+function render(
+  props: Partial<Parameters<typeof ImportWorkspace>[0]> = {},
+  source: 'file' | 'landing' = 'file',
+) {
   let renderer!: ReactTestRenderer
   const onSubmit = props.onSubmit ?? vi.fn(async () => true)
   act(() => {
     renderer = create(<ImportWorkspace submitting={false} onSubmit={onSubmit} now={fixedNow}
+      conversations={[]} previewDshConversations={vi.fn()} onSubmitDsh={vi.fn(async () => true)}
       modelSelection={modelSelection} modelStatus="ready" ordinarySession {...props} />)
   })
+  if (source === 'file') act(() => button(renderer, '上传文件').props.onClick())
   return { renderer, onSubmit }
 }
 
 function button(renderer: ReactTestRenderer, label: string) {
-  return renderer.root.findAllByType('button').find(node => node.children.join('') === label)!
+  return renderer.root.findAllByType('button').find(node =>
+    node.props['aria-label'] === label || node.children.join('') === label)!
 }
 
 async function chooseFile(renderer: ReactTestRenderer, file: File) {
@@ -29,6 +35,16 @@ async function chooseFile(renderer: ReactTestRenderer, file: File) {
 }
 
 describe('phase1d import workspace', () => {
+  test('starts with three independent source choices and opens the DSH selector', () => {
+    const { renderer } = render({}, 'landing')
+    expect(button(renderer, '从 DSH 对话提取')).toBeDefined()
+    expect(button(renderer, '上传文件')).toBeDefined()
+    expect(button(renderer, '粘贴正文')).toBeDefined()
+
+    act(() => button(renderer, '从 DSH 对话提取').props.onClick())
+    expect(JSON.stringify(renderer.toJSON())).toContain('选择 DSH 对话')
+    expect(renderer.root.findAllByProps({ 'data-testid': 'nobei-file-input' })).toHaveLength(0)
+  })
   test('previews PDF without starting generation and submits canonical text only after click', async () => {
     vi.useFakeTimers()
     const preview: DocumentPreview = { filename: '教材.pdf', mediaType: 'application/pdf', text: '中文原文\n第二页',

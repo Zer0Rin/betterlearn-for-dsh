@@ -1,12 +1,14 @@
 # BetterLearn for DSH
 
-BetterLearn for DSH 是运行在 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/DeepSeek-Harness) WebUI 中的本地知识提取插件。导入一段资料，BetterLearn 会生成知识点候选、逐字定位原文证据，再由你决定接受、修改或拒绝。
+BetterLearn for DSH 是运行在 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/DeepSeek-Harness) WebUI 中的本地知识提取插件。选择 DSH 历史对话或导入一段资料后，BetterLearn 会生成知识点候选、逐字定位来源证据，再由你决定接受、修改或拒绝。
 
 它使用 DSH 当前选择的模型完成生成，以常驻 Python Core 和独立 SQLite 保存业务数据。没有独立应用，也不读取或迁移旧 Nobei 数据。
 
 ## 它能做什么
 
+- 选择一个或多个普通 DSH 历史对话，合并为一次知识点提取任务；
 - 导入 TXT、Markdown、有文字层的 PDF，或直接粘贴文本；
+- 在 DSH 对话正式提取前查看完整合并正文，只保留用户正文和 DSH 的可见文字回答；
 - 在调用模型前预览 L1/L2/L3 提取策略和最大调用次数；
 - 短文一次提取，长文先规划再分批处理；
 - 为每条候选精确匹配一处或多处原文引用；
@@ -22,7 +24,7 @@ BetterLearn for DSH 是运行在 [DeepSeek Harness（DSH）](https://github.com/
 
 ```mermaid
 flowchart LR
-    A[导入或粘贴原文] --> B[预览策略与调用上限]
+    A[选择 DSH 对话或导入资料] --> B[预览完整正文、策略与调用上限]
     B --> C[生成候选]
     C --> D[逐字校验证据]
     D --> E[接受 / 修改 / 拒绝]
@@ -59,8 +61,8 @@ node "$BETTERLEARN_CLI" start \
 ## 第一次使用
 
 1. 在 DSH WebUI 中选择可用的 provider、model 和 reasoning effort。
-2. 点击屏幕右侧默认收起的“BetterLearn”按钮，在浮动小窗中选择文件或粘贴原文。结果页默认约 `460px` 宽；可拖动左边缘、底边或左下角调整宽高。
-3. 检查提取策略和最大模型调用次数，点击“开始提取”。
+2. 点击屏幕右侧默认收起的“BetterLearn”按钮，选择知识来源：DSH 对话、文件或粘贴正文。结果页默认约 `460px` 宽；可拖动左边缘、底边或左下角调整宽高。
+3. 如果选择 DSH 对话，可搜索并勾选一个或多个相关普通对话。确认完整合并正文、提取策略和最大模型调用次数后，点击“开始提取”。
 4. 等待候选生成和证据校验完成。长文会串行执行多个批次。
 5. 在审核页核对高亮原文，选择“接受”“修改后接受”或“拒绝”。
 6. 全部审核完成后查看正式知识点；需要时可直接修改标题和详细内容并保存。
@@ -73,7 +75,8 @@ node "$BETTERLEARN_CLI" start \
 满足下面这些结果，说明最小闭环已经正常工作：
 
 - `install` 输出 `Installed BetterLearn`，`start` 能启动专用 DSH WebUI；
-- 右侧 BetterLearn 按钮默认收起，点击后能在不挤压 DSH 对话区的浮动小窗中导入或粘贴原文；
+- 右侧 BetterLearn 按钮默认收起，点击后能在不挤压 DSH 对话区的浮动小窗中选择 DSH 对话、导入文件或粘贴原文；
+- DSH 对话支持搜索和多选，正式提取前必须显示完整合并预览；预览内容不含系统提示、推理、工具、插件注入或子 Agent 内容；
 - 结果页默认保持窄窗，调整后的尺寸在刷新后恢复；小窗口会压缩字体与间距，大窗口不会无限放大文字；
 - 历史在窄窗内以抽屉方式打开，不再为了历史强制扩大整个浮窗；
 - 预览页显示提取策略和调用上限，且预览本身不调用模型；
@@ -100,6 +103,12 @@ node "$BETTERLEARN_CLI" start \
 
 当前只解析 PDF 文字层，不提供 OCR，也不读取页面图像。扫描件需要先在其他工具中完成 OCR，再导入生成的文本。PDF 文件上限为 5 MiB，规范化正文上限为 512 KiB。
 
+### 从 DSH 对话提取时会读取哪些内容？
+
+BetterLearn 只列出普通 DSH 对话。用户主动选择后，Host 通过 DSH 的会话查询接口按原始追加事件读取，并只接受用户消息中的文字正文和 DSH 助手消息中的可见文字回答。系统提示、内部推理、工具调用与结果、插件注入上下文、图片及其他非文字块、子 Agent 对话都不会进入预览或提取正文。
+
+多个相关对话按列表顺序合并成一个任务，最多选择 50 个，合并后的 UTF-8 正文上限为 512 KiB；超过上限时不会截断，必须减少选择。提交前 Host 会重新读取并核对预览摘要；内容有变化时必须重新预览。
+
 ### 能把 BetterLearn 装进日常编码 profile 吗？
 
 当前交付使用专用 profile。随包配置会关闭该 profile 的部分重试、标题生成和编码工具，并限制 workflow 并发，以保证提取闭环行为稳定。不要直接把这些配置叠加到日常编码环境，具体影响见 [专用 profile 的能力范围](docs/install.md#专用-profile-的能力范围)。
@@ -118,7 +127,7 @@ DSH CLI
                                 └─ 独立 SQLite
 ```
 
-Host 位于 `src/product`，注入 DSH 的 agents、llm、subprocess、tools、webServer 和 workflowEngine；Web 客户端位于 `src/client`，直接挂载到 `document.body`，以右侧按钮控制独立浮窗；Python Core 位于 `python/nobei_core`，通过 stdio JSON-RPC 常驻运行。
+Host 位于 `src/product`，注入 DSH 的 agents、llm、sessionQuery、subprocess、tools、webServer 和 workflowEngine；Web 客户端位于 `src/client`，直接挂载到 `document.body`，以右侧按钮控制独立浮窗；Python Core 位于 `python/nobei_core`，通过 stdio JSON-RPC 常驻运行。
 
 详细边界见 [架构说明](docs/architecture.md)，当前验证范围见 [验证说明](docs/validation.md)，后续工作见 [路线图](docs/roadmap.md)。
 
@@ -129,6 +138,7 @@ Host 位于 `src/product`，注入 DSH 的 agents、llm、subprocess、tools、w
 - 正式数据库、真实 provider 响应和历史验收 evidence 不随仓库分发；
 - 数据与旧 Nobei 始终隔离，不读取、合并、迁移或自动删除旧数据；
 - PDF 只保存规范化正文，不保存原 PDF；
+- DSH 对话任务只保存经过白名单过滤的合并正文和来源标签，不保存被排除的宿主内部上下文；
 - 仓库不包含 `node_modules`、虚拟环境和构建产物。
 
 内部 npm 包名与 Python 模块名暂时保留 `@nobei/dsh-phase1` / `nobei_core`，避免与功能无关的大范围重命名。独立产品与仓库名称是 `betterlearn-for-dsh`。
@@ -166,7 +176,7 @@ BetterLearn for DSH 采用 [MIT License](LICENSE) 开源。公开 Git 仓库用�
 
 用户开始提取时，Host通过DSH的`ctx.llm.resolveCallConfig`解析模型配置，由Core冻结provider、model与reasoning effort。实际生成由`workflowEngine`执行`agent(prompt, { schema })`，每次规划或提取创建独立的父/子Agent；配置解析本身不是一次候选生成。切换DSH模型只影响新任务，已有任务重试仍沿用冻结的选择。
 
-插件显式提供两类输入：规划请求包含当前容器各块的ID和正文，要求按顺序完整分组；提取请求包含当前正文范围、逐字引用证据的规则，以及`structured_output`候选Schema。L1直接提供全文，L2/L3逐组提供正文，L3另有边界范围提取。PDF先在本地解析为规范化文字，不把原PDF或页面图像交给模型。插件不主动拼接其他批次的回答或用户聊天记录；最终请求仍由DSH组装其系统上下文和工具说明。
+插件显式提供两类输入：规划请求包含当前容器各块的ID和正文，要求按顺序完整分组；提取请求包含当前正文范围、逐字引用证据的规则，以及`structured_output`候选Schema。L1直接提供全文，L2/L3逐组提供正文，L3另有边界范围提取。PDF先在本地解析为规范化文字，不把原PDF或页面图像交给模型。只有用户显式选择 DSH 历史对话时，插件才会把白名单过滤后的用户正文与 DSH 可见回答合并为当前任务材料；不会把系统提示、推理、工具、插件上下文或子 Agent 内容拼入材料。最终请求仍由DSH组装其系统上下文和工具说明。
 
 当前新任务的`l1-v3`提示词要求选择主要且不重复的知识点、遵守字段数量和长度限制，并原样复制quote。兼容DSH所需的Schema转换会把其不支持的数量/长度关键字写进字段description；返回后仍由完整契约校验。提取Agent只允许`structured_output`，不能执行bash、读写文件或其他工具。具体请求构造见 [generation-adapter.ts](src/product/generation-adapter.ts)，字段约束见 [候选契约](contracts/l1-candidate.schema.json)。
 
@@ -185,5 +195,6 @@ L1每次提取最多1次模型调用；L2/L3包含规划和分批提取，界面
 - 当前只支持单机单用户macOS/Linux上的DSH Web插件，安装需维护CLI完成Python与数据目录初始化；预构建tarball是当前交付渠道，不承诺npm包名或Git源码直接安装。公开仓库采用MIT许可证，但源码公开不改变已经验收的安装路径。
 - BetterLearn 浮窗不占用 DSH 的标签页或对话布局；但随包的patch会修改专用profile中的工具、重试和workflow设置。不要把它直接叠加到日常编码profile；具体影响见 [专用profile限制](docs/install.md#专用-profile-的能力范围)。
 - PDF只支持文字层，无OCR；证据定位针对保存的规范化正文，不保证原PDF版面坐标。正文上限512KiB、PDF文件上限5MiB；不保存原PDF。
+- DSH 对话导入只支持普通会话中的用户/助手可见文字；最多选择50个，合并正文上限512KiB，不截断、不增量同步，内容变化后必须重新预览。
 - 每次提取调用最多20条候选，长文按多批汇总；精确quote匹配不等于知识点语义正确或覆盖完整，仍需人工审核。fake验收和有限真实试用不代表任意模型、任意材料的质量保证，已验证范围见 [验证说明](docs/validation.md)。
 - 配置由维护CLI提供，Host导出Schemastery `Config`供Cordis加载与更新时校验。Python路径、数据目录与ownership token均属于本机安装，保持必填，不生成通用默认值。客户端通过`inject.hooks`订阅模型目录；尚未提供插件设置卡片。

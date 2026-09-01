@@ -16,7 +16,7 @@ export type RunHistoryStatus =
 
 export interface RunHistorySummary {
   runId: string
-  sourceType: 'document'
+  sourceType: 'document' | 'dsh_conversation'
   sourceLabel: string
   status: RunHistoryStatus
   stage: string
@@ -58,7 +58,11 @@ export interface RunSnapshot {
   error: null | { code: string; retryable: boolean }
   document: {
     filename: string
-    mediaType: 'text/plain' | 'text/markdown' | 'application/pdf'
+    mediaType:
+      | 'text/plain'
+      | 'text/markdown'
+      | 'application/pdf'
+      | 'application/vnd.betterlearn.dsh-conversation+markdown'
     byteSize: number
     characterCount: number
     text: string
@@ -79,6 +83,12 @@ export interface GenerationLaunch {
   runId: string
   attemptId: string
   revision: number
+  modelSelection: ModelSelectionSnapshot
+}
+
+export interface DshConversationImportRequest {
+  sessionIds: string[]
+  expectedDigest: string
   modelSelection: ModelSelectionSnapshot
 }
 
@@ -155,25 +165,50 @@ export interface ExtractionPlan {
   maxCalls: number
 }
 
-export type DocumentPreviewRequest = ImportTextInput | {
+export interface DocumentPreviewTextInput {
+  filename: string
+  mediaType:
+    | 'text/plain'
+    | 'text/markdown'
+    | 'application/pdf'
+    | 'application/vnd.betterlearn.dsh-conversation+markdown'
+  text: string
+}
+
+export type DocumentPreviewRequest = DocumentPreviewTextInput | {
   filename: string
   mediaType: 'application/pdf'
   contentBase64: string
 }
 
-export interface DocumentPreview extends ImportTextInput {
+export interface DocumentPreview extends DocumentPreviewTextInput {
   byteSize: number
   characterCount: number
   pages: Array<{ page: number; textStart: number; textEnd: number }>
   extractionPlan: ExtractionPlan
 }
 
+export interface DshConversationPreview {
+  sessionIds: string[]
+  filename: string
+  mediaType: 'application/vnd.betterlearn.dsh-conversation+markdown'
+  text: string
+  contentDigest: string
+  conversationCount: number
+  messageCount: number
+  byteSize: number
+  characterCount: number
+  extractionPlan: ExtractionPlan
+}
+
 export interface ClientApi {
   previewDocument?(input: DocumentPreviewRequest, signal?: AbortSignal): Promise<DocumentPreview>
+  previewDshConversations(sessionIds: string[], signal?: AbortSignal): Promise<DshConversationPreview>
   watchRun?(runId: string, onChange: () => void, onProgress?: (progress: GenerationProgress) => void): () => void
   getProgress?(runId: string, signal?: AbortSignal): Promise<GenerationProgress | null>
   listRuns(signal?: AbortSignal): Promise<RunHistoryResult>
   importText(input: ImportTextRequest, signal?: AbortSignal): Promise<GenerationLaunch>
+  importDshConversations(input: DshConversationImportRequest, signal?: AbortSignal): Promise<GenerationLaunch>
   getRun(runId: string, signal?: AbortSignal): Promise<RunSnapshot>
   listEvents(runId: string, after: number, signal?: AbortSignal): Promise<EventPage>
   retryRun(runId: string, expectedRevision: number, signal?: AbortSignal): Promise<GenerationLaunch>
