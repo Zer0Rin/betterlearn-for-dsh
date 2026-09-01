@@ -1,28 +1,101 @@
 # BetterLearn for DSH
 
-BetterLearn for DSH 是一个独立的 DSH Web 插件项目。DSH 通过 CLI 启动本地服务，用户在浏览器 WebUI 中使用 BetterLearn。
+BetterLearn for DSH 是运行在 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/DeepSeek-Harness) WebUI 中的本地知识提取插件。导入一段资料，BetterLearn 会生成知识点候选、逐字定位原文证据，再由你决定接受、修改或拒绝。
 
-当前版本提供一条可运行的文本学习资料提取链路：
+它使用 DSH 当前选择的模型完成生成，以常驻 Python Core 和独立 SQLite 保存业务数据。没有独立应用，也不读取或迁移旧 Nobei 数据。
 
-- 在 DSH WebUI 中粘贴 TXT / Markdown，或导入有文字层的 PDF；
-- 使用 DSH 当前会话选择的模型生成知识点候选；
-- 新任务会冻结当时的 provider、model 和 reasoning effort，之后修改 DSH 模型只影响新任务；
-- 短文直接提取，长文按 L2/L3 规划与分批提取，点击前显示调用上限；
-- Python Core 对多条候选证据做逐字定位，统一文档绝对坐标，并维护独立 SQLite 状态；
-- 用户可以审核、修改、接受或拒绝候选；
-- Host 负责 DSH 集成和 Core 生命周期，业务事实仍由 Core 持有。
+## 它能做什么
 
-## 项目边界
+- 导入 TXT、Markdown、有文字层的 PDF，或直接粘贴文本；
+- 在调用模型前预览 L1/L2/L3 提取策略和最大调用次数；
+- 短文一次提取，长文先规划再分批处理；
+- 为每条候选精确匹配一处或多处原文引用；
+- 在审核页修改、接受或拒绝候选，接受后形成正式知识点；
+- 通过 SSE 即时更新进度，并保留轮询和页面重连兜底；
+- 在本机完成数据库备份、恢复、升级和保留数据卸载。
 
-这个仓库只保留当前 DSH 插件主线所需的代码、契约、测试、确定性夹具和验收工具，不包含：
+每个任务会冻结创建时的 provider、model 和 reasoning effort。之后切换 DSH 模型只影响新任务，已有任务的重新提取仍使用原来的模型。
 
-- 原 Nobei 书架、学习与 FSRS 应用；
-- 已废弃的 Claude Code sidecar 路线；
-- 企业产品化旧批次计划；
-- 历史运行 evidence、真实模型原始响应或旧数据库；
-- `node_modules`、虚拟环境和构建产物。
+## 一次提取如何完成
 
-内部 npm 包名与 Python 模块名暂时保留 `@nobei/dsh-phase1` / `nobei_core`，用于避免一次与功能无关的大范围重命名。独立产品与仓库名称是 `betterlearn-for-dsh`。
+```mermaid
+flowchart LR
+    A[导入或粘贴原文] --> B[预览策略与调用上限]
+    B --> C[生成候选]
+    C --> D[逐字校验证据]
+    D --> E[接受 / 修改 / 拒绝]
+    E --> F[正式知识点]
+```
+
+界面会依次显示“文档已保存”“正在生成候选”“正在校验证据”“等待审核”。预览、审核、刷新页面和重新连接都不会调用模型；只有开始新任务或显式重新提取才会产生新的模型调用。
+
+## 安装与启动
+
+需要 macOS 或 Linux、Node.js 24、Python 3.12，以及 DSH `0.1.0-rc.7` 或 `0.1.0-rc.8`。当前正式支持预构建 tarball，通过维护 CLI 安装；暂不承诺 npm registry 或 GitHub 源码直装。
+
+把交付包解压后，使用其中的 CLI 安装。以下路径需要替换成你的实际路径：
+
+```bash
+BETTERLEARN_CLI="/absolute/path/to/package/bin/betterlearn.mjs"
+
+node "$BETTERLEARN_CLI" install \
+  --home "$HOME/.betterlearn" \
+  --dsh /absolute/path/to/dsh \
+  --dsh-version 0.1.0-rc.8 \
+  --python /absolute/path/to/python3.12 \
+  --package /absolute/path/to/betterlearn.tgz
+
+node "$BETTERLEARN_CLI" start \
+  --home "$HOME/.betterlearn" \
+  --port 3000
+```
+
+安装命令除注册 DSH 插件外，还会创建 Python 虚拟环境、安装锁定依赖、初始化独立 SQLite 和本机 ownership token。标准 `dsh plugin add` 不能替代这些步骤。
+
+启动后打开 DSH 输出的本地地址。BetterLearn 使用专用 `betterlearn` profile，不修改默认 DSH profile。完整的安装、升级、备份、恢复和卸载命令见 [安装与维护说明](docs/install.md)。
+
+## 第一次使用
+
+1. 在 DSH WebUI 中选择可用的 provider、model 和 reasoning effort。
+2. 打开空会话中的 BetterLearn 导入入口，选择文件或粘贴原文。
+3. 检查提取策略和最大模型调用次数，点击“开始提取”。
+4. 等待候选生成和证据校验完成。长文会串行执行多个批次。
+5. 在审核页核对高亮原文，选择“接受”“修改后接受”或“拒绝”。
+6. 全部审核完成后查看本次生成的正式知识点。
+
+真实模型调用可能收费。模型已经返回，但输出格式或证据没有通过校验时，provider 仍可能计费。
+
+## 如何确认安装可用
+
+满足下面这些结果，说明最小闭环已经正常工作：
+
+- `install` 输出 `Installed BetterLearn`，`start` 能启动专用 DSH WebUI；
+- 空会话中可以进入 BetterLearn 页面，并能导入或粘贴原文；
+- 预览页显示提取策略和调用上限，且预览本身不调用模型；
+- 点击“开始提取”后，进度最终进入“等待审核”；
+- 候选的引用可以在原文中逐字高亮；
+- 接受候选后会出现对应的正式知识点；
+- 刷新或重新连接能恢复当前任务，且不会额外调用模型。
+
+仓库级构建、测试及 P2/P3/P4 验收标准见 [验证说明](docs/validation.md)和 [交付验收](docs/delivery-plan.md)。
+
+## 常见问题
+
+### 长时间停在“正在生成候选”怎么办？
+
+长文会先规划，再串行提取多个批次；模型停止计费或最后一次返回后，本地仍可能继续解析结果和校验证据。保持 DSH 进程运行即可，页面重新连接不会重新调用模型。若界面明确进入失败状态，再按提示检查模型配置或新建任务。
+
+### 为什么显示“模型返回的结果不符合提取格式”？
+
+模型输出必须通过候选 Schema 和证据规则。格式无效时，本次不会保存候选，但已经完成的 provider 调用仍可能收费。显式“重新提取”会从头执行整个计划并再次调用模型；切换 DSH 模型只会影响新任务。
+
+### PDF 为什么无法导入或没有内容？
+
+当前只解析 PDF 文字层，不提供 OCR，也不读取页面图像。扫描件需要先在其他工具中完成 OCR，再导入生成的文本。PDF 文件上限为 5 MiB，规范化正文上限为 512 KiB。
+
+### 能把 BetterLearn 装进日常编码 profile 吗？
+
+当前交付使用专用 profile。随包配置会关闭该 profile 的部分重试、标题生成和编码工具，并限制 workflow 并发，以保证提取闭环行为稳定。不要直接把这些配置叠加到日常编码环境，具体影响见 [专用 profile 的能力范围](docs/install.md#专用-profile-的能力范围)。
 
 ## 架构
 
@@ -37,11 +110,24 @@ DSH CLI
                                 └─ 独立 SQLite
 ```
 
+Host 位于 `src/product`，注入 DSH 的 agents、llm、subprocess、tools、webServer 和 workflowEngine；Web 客户端位于 `src/client`，注册 `conversation.view`；Python Core 位于 `python/nobei_core`，通过 stdio JSON-RPC 常驻运行。
+
 详细边界见 [架构说明](docs/architecture.md)，当前验证范围见 [验证说明](docs/validation.md)，后续工作见 [路线图](docs/roadmap.md)。
+
+## 数据与项目边界
+
+- 当前产品是单机单用户本地插件，不是独立应用；
+- 只使用产品自有的 11 张表，新库从最终产品 Schema 干净创建；
+- 正式数据库、真实 provider 响应和历史验收 evidence 不随仓库分发；
+- 数据与旧 Nobei 始终隔离，不读取、合并、迁移或自动删除旧数据；
+- PDF 只保存规范化正文，不保存原 PDF；
+- 仓库不包含 `node_modules`、虚拟环境和构建产物。
+
+内部 npm 包名与 Python 模块名暂时保留 `@nobei/dsh-phase1` / `nobei_core`，避免与功能无关的大范围重命名。独立产品与仓库名称是 `betterlearn-for-dsh`。
 
 ## 开发
 
-当前依赖基线为 DSH `0.1.0-rc.7`、Node.js 24、pnpm 11.23 和 Python 3.12。
+依赖基线为 DSH `0.1.0-rc.7`、Node.js 24、pnpm 11.23 和 Python 3.12。
 
 ```bash
 CI=true corepack pnpm@11.23.0 install --frozen-lockfile
@@ -50,32 +136,19 @@ corepack pnpm@11.23.0 test
 corepack pnpm@11.23.0 test:phase1b-python
 ```
 
-首次checkout或依赖声明变化后先执行安装。`CI=true`仅作用于安装命令，允许无交互终端同步旧`node_modules`；锁文件仍由`--frozen-lockfile`保持不变。否则直接测试可能在依赖准备阶段遇到`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`，详见[首次运行说明](docs/validation.md#开发环境准备与首次运行)。
+首次 checkout 或依赖声明变化后先执行安装。`CI=true` 允许无交互终端同步旧 `node_modules`；`--frozen-lockfile` 仍会阻止锁文件漂移。否则可能在依赖准备阶段遇到 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`，详见[开发环境准备与首次运行](docs/validation.md#开发环境准备与首次运行)。
 
-生成安装包：
+生成预构建安装包：
 
 ```bash
 corepack pnpm@11.23.0 pack:acceptance
 ```
 
-验收脚本会自行创建临时 DSH profile。历史真实模型验证已封存；当前交付验收只使用 fake provider，普通构建和测试不会调用真实模型。
-
-## 数据安全边界
-
-- 默认验证目标是仓库内的空 sentinel 目录，不依赖原 Nobei 仓库。
-- 仅使用产品自有的 11 张表；新库使用 `python/nobei_core/sql/001_product.sql`，不继承或迁移旧 v8 数据。
-- 正式数据库、真实 provider 响应和历史 evidence 不随仓库分发。
-- 当前插件数据库与旧 Nobei 数据始终隔离；不设计合并或自动删除旧数据。
-
-## 使用与交付
-
-安装、启动、升级、备份恢复及保留数据卸载见 [安装说明](docs/install.md)。当前为单机单用户本地插件；PDF只解析文字层，不提供OCR，保存规范化正文而不是原PDF。TXT/Markdown与PDF解析正文上限512KiB，PDF文件上限5MiB。
-
-验收要求与分阶段结果见 [交付验收](docs/delivery-plan.md)。P2/P3开发期的旧fixture库不作为升级源；首次交付从最终产品schema的空目录开始，之后同schema升级保留数据。
+普通构建和测试不会调用真实模型。历史真实模型验证已经封存，当前交付验收使用 fake provider。
 
 ## 许可证
 
-BetterLearn for DSH 采用 [MIT License](LICENSE) 开源。当前发布渠道仍是维护CLI安装预构建tarball；公开Git仓库用于查看、审计和协作，不承诺通过Git源码或npm registry直接安装。
+BetterLearn for DSH 采用 [MIT License](LICENSE) 开源。公开 Git 仓库用于查看、审计和协作，不改变已经验收的 tarball 安装路径。
 
 ## Model Experience
 
