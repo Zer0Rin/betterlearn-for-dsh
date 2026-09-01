@@ -33,6 +33,35 @@ describe('phase1d Client API', () => {
       method: 'POST', body: JSON.stringify(input), headers: { 'content-type': 'application/json' }, signal: undefined,
     })
   })
+
+  test('maps DSH conversation preview and import to exact same-origin requests', async () => {
+    const fetchMock = vi.fn(async () => success({}))
+    vi.stubGlobal('fetch', fetchMock)
+    const api = createClientApi()
+    const controller = new AbortController()
+    const sessionIds = ['session-a', 'session-b']
+
+    await api.previewDshConversations(sessionIds, controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith('/nobei/v1/dsh-conversations/preview', {
+      method: 'POST',
+      body: JSON.stringify({ sessionIds }),
+      headers: { 'content-type': 'application/json' },
+      signal: controller.signal,
+    })
+
+    const input = {
+      sessionIds,
+      expectedDigest: 'd'.repeat(64),
+      modelSelection: { provider: 'provider-a', model: 'model-a', reasoningEffort: 'high' },
+    }
+    await api.importDshConversations(input, controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith('/nobei/v1/dsh-conversations/imports', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: { 'content-type': 'application/json' },
+      signal: controller.signal,
+    })
+  })
   test('listens to SSE hints and silently closes on disconnect', () => {
     const stream = { addEventListener: vi.fn(), close: vi.fn(), onerror: null as null | (() => void) }
     const EventSource = vi.fn(function () { return stream })

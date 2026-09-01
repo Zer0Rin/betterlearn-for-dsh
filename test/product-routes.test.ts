@@ -337,6 +337,7 @@ describe('P3 document preview', () => {
     { filename: 'long.txt', mediaType: 'text/plain', text: '😀'.repeat(20000) },
     { filename: 'lesson.pdf', mediaType: 'application/pdf', contentBase64: 'JVBERi0=' },
     { filename: 'lesson.pdf', mediaType: 'application/pdf', text: '已解析正文😀' },
+    { filename: 'DSH对话合集-主题.md', mediaType: DSH_CONVERSATION_MEDIA_TYPE, text: '# DSH 对话合集' },
   ])('forwards readonly preview and plan without generation: $filename', async body => {
     const ops = operations()
     const { port } = await listen('READY', ops)

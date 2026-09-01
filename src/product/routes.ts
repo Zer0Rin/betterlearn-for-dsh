@@ -229,7 +229,8 @@ function parsePreview(value: unknown): DocumentPreviewParams | undefined {
     && typeof contentBase64 === 'string' && contentBase64.length > 0
     && contentBase64.length <= 4 * Math.ceil(5 * 1024 * 1024 / 3)) return { filename, mediaType, contentBase64 }
   if (exactObject(input, ['filename', 'mediaType', 'text'])
-    && (mediaType === 'text/plain' || mediaType === 'text/markdown' || mediaType === 'application/pdf')
+    && (mediaType === 'text/plain' || mediaType === 'text/markdown' || mediaType === 'application/pdf'
+      || mediaType === 'application/vnd.betterlearn.dsh-conversation+markdown')
     && typeof text === 'string' && text.length > 0 && Buffer.byteLength(text, 'utf8') <= 512 * 1024) return { filename, mediaType, text }
   return undefined
 }
