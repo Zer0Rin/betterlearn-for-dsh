@@ -63,6 +63,20 @@ export function assertPhase1dBrowserResult(value) {
   if (value.sidebarCollapsedForNarrow !== true || value.narrowContentWidth < 280) {
     fail('CLIENT_NARROW_HOST_LAYOUT_INVALID')
   }
+  const history = value.history
+  if (history?.collapsedByDefault !== true
+    || history.retainedRunCount < 2
+    || history.hostLayoutUnchanged !== true
+    || !Number.isFinite(history.contentWidthBefore)
+    || !Number.isFinite(history.contentWidthAfter)
+    || Math.abs(history.contentWidthBefore - history.contentWidthAfter) > 1
+    || !Number.isFinite(history.panelWidthBefore)
+    || !Number.isFinite(history.panelWidthAfter)
+    || history.panelWidthAfter <= history.panelWidthBefore
+    || history.globalWithoutSessionStorage !== true
+    || history.navigationProviderCalls !== 0) {
+    fail(`CLIENT_HISTORY_INVALID:${JSON.stringify(history)}`)
+  }
   const productRequests = value.productRequests
   const imports = Array.isArray(productRequests)
     ? productRequests.filter((request) => request.method === 'POST' && request.path === '/nobei/v1/imports')
@@ -73,8 +87,8 @@ export function assertPhase1dBrowserResult(value) {
     : []
   if (!Array.isArray(productRequests)
     || productRequests.some((request) => request.status < 200 || request.status >= 300)
-    || imports.length !== 1 || imports[0].status !== 202
-    || JSON.stringify(imports[0].modelSelection) !== JSON.stringify(FAKE_MODEL_SELECTION)
+    || imports.length !== 2 || imports.some(request => request.status !== 202)
+    || imports.some(request => JSON.stringify(request.modelSelection) !== JSON.stringify(FAKE_MODEL_SELECTION))
     || reviews.length !== 3 || reviews.some((request) => request.status !== 200)) {
     fail('CLIENT_PRODUCT_REQUEST_FAILED')
   }
@@ -91,12 +105,12 @@ export function assertPhase1dBrowserResult(value) {
     || value.ledgerBeforeImport?.nonce !== value.rawFakeLedger?.nonce
     || value.fakeLedger?.nonce !== value.rawFakeLedger?.nonce
     || !Array.isArray(ledgerRecords)
-    || ledgerRecords.length !== 1
-    || ledgerRecords[0]?.provider !== FAKE_MODEL_SELECTION.provider
-    || ledgerRecords[0]?.model !== FAKE_MODEL_SELECTION.model
-    || ledgerRecords[0]?.reasoningEffort !== undefined
-    || structuredRecords.length !== 1
-    || JSON.stringify(structuredRecords[0]?.toolNames) !== JSON.stringify(['structured_output'])) {
+    || ledgerRecords.length !== 2
+    || ledgerRecords.some(record => record?.provider !== FAKE_MODEL_SELECTION.provider
+      || record?.model !== FAKE_MODEL_SELECTION.model
+      || record?.reasoningEffort !== undefined)
+    || structuredRecords.length !== 2
+    || structuredRecords.some(record => JSON.stringify(record?.toolNames) !== JSON.stringify(['structured_output']))) {
     fail('CLIENT_FAKE_LEDGER_INVALID')
   }
   if (typeof value.screenshots?.wideResult !== 'string' || value.screenshots.wideResult.length === 0
@@ -406,12 +420,66 @@ async function execute(evidenceRoot) {
     const resultWidth = await floatingPanelWidth(page, 'result')
 
     const knowledgePointCount = await page.locator('.nobei-client__knowledge-list article').count()
+    await page.getByTestId('nobei-reset').click()
+    await waitForScreen(page, 'import')
+    await page.getByRole('tab', { name: '粘贴文本', exact: true }).click()
+    await page.getByTestId('nobei-paste-name').fill('cloud-computing.md')
+    await page.getByTestId('nobei-paste-text').fill([
+      'fixture:one',
+      '',
+      '云计算通过网络按需提供计算、存储和软件服务。',
+    ].join('\n'))
+    const secondImportResponse = page.waitForResponse(response => {
+      const url = new URL(response.url())
+      return url.pathname === '/nobei/v1/imports' && response.request().method() === 'POST'
+    }, { timeout: 30_000 })
+    await page.locator('button.nobei-client__primary:not([disabled])').waitFor({ state: 'visible', timeout: 30_000 })
+    await page.getByRole('button', { name: '开始提取', exact: true }).click()
+    const secondImport = await secondImportResponse
+    const secondImportBody = await secondImport.json()
+    if (secondImport.status() !== 202 || typeof secondImportBody?.result?.runId !== 'string') {
+      throw new Error(`CLIENT_SECOND_IMPORT_FAILED:${secondImport.status()}`)
+    }
+    const secondRunId = secondImportBody.result.runId
+    await waitForScreen(page, 'processing')
+    await waitForScreen(page, 'result', 60_000)
+
+    const floatingPanel = page.getByTestId('betterlearn-floating-panel')
+    await floatingPanel.evaluate(async element => {
+      await Promise.all(element.getAnimations().map(animation => animation.finished))
+    })
+    const historyCollapsedByDefault = await floatingPanel.getAttribute('data-history-open') === 'false'
+    const historyHost = page.locator('[data-conversation-scroll]').first()
+    const hostBeforeHistory = await historyHost.evaluate(element => element.getBoundingClientRect().width)
+    const contentWidthBefore = await page.locator('.nobei-client').evaluate(element => element.getBoundingClientRect().width)
+    const panelWidthBefore = await floatingPanel.evaluate(element => element.getBoundingClientRect().width)
+    const ledgerBeforeNavigation = await waitForLedgerRecords(
+      baseUrl, config.ledgerToken, ledgerBeforeImport.records.length + 2,
+    )
+    await page.getByTestId('betterlearn-history-toggle').click()
+    await floatingPanel.evaluate(async element => {
+      await Promise.all(element.getAnimations().map(animation => animation.finished))
+    })
+    await page.locator(`.nobei-history [data-run-id="${importedRunId}"]`).waitFor({ state: 'visible', timeout: 30_000 })
+    await page.locator(`.nobei-history [data-run-id="${secondRunId}"]`).waitFor({ state: 'visible', timeout: 30_000 })
+    const retainedRunCount = await page.locator('.nobei-history [data-run-id]').count()
+    const hostAfterHistory = await historyHost.evaluate(element => element.getBoundingClientRect().width)
+    const contentWidthAfter = await page.locator('.nobei-client').evaluate(element => element.getBoundingClientRect().width)
+    const panelWidthAfter = await floatingPanel.evaluate(element => element.getBoundingClientRect().width)
+
     const screenshotRoot = join(evidenceRoot, 'screenshots')
     await mkdir(screenshotRoot, { recursive: true })
     const screenshots = {
       wideResult: join(screenshotRoot, 'wide-result.png'),
+      wideHistory: join(screenshotRoot, 'wide-history.png'),
       narrowImport: join(screenshotRoot, 'narrow-import.png'),
     }
+    await page.screenshot({ path: screenshots.wideHistory, fullPage: true })
+    await page.locator(`.nobei-history [data-run-id="${importedRunId}"]`).click()
+    await waitForScreen(page, 'result')
+    await delay(200)
+    const ledgerAfterNavigation = await ledger(baseUrl, config.ledgerToken)
+    const navigationProviderCalls = ledgerAfterNavigation.records.length - ledgerBeforeNavigation.records.length
     await page.screenshot({ path: screenshots.wideResult, fullPage: true })
 
     const importsBeforePreview = productRequests.filter((request) => request.method === 'POST'
@@ -422,6 +490,19 @@ async function execute(evidenceRoot) {
     await narrowPage.goto(baseUrl, { waitUntil: 'domcontentloaded' })
     await openNobeiView(narrowPage, manifest.paths.runtimeRoot)
     screens.push(await waitForScreen(narrowPage, 'import'))
+    const sidebarCollapsedForNarrow = await narrowPage.getByTestId('betterlearn-floating-panel')
+      .getAttribute('data-history-open') === 'false'
+    const narrowHadNoRunPointer = await narrowPage.evaluate(() => Object.keys(window.sessionStorage)
+      .filter(key => key.startsWith('nobei:phase1d:session:'))
+      .every(key => {
+        try { return JSON.parse(window.sessionStorage.getItem(key) ?? 'null')?.runId === undefined } catch { return true }
+      }))
+    await narrowPage.getByTestId('betterlearn-history-toggle').click()
+    await narrowPage.locator(`.nobei-history [data-run-id="${importedRunId}"]`).waitFor({ state: 'visible', timeout: 30_000 })
+    await narrowPage.locator(`.nobei-history [data-run-id="${secondRunId}"]`).waitFor({ state: 'visible', timeout: 30_000 })
+    const globalWithoutSessionStorage = narrowHadNoRunPointer
+      && await narrowPage.locator('.nobei-history [data-run-id]').count() >= 2
+    await narrowPage.getByTestId('betterlearn-history-toggle').click()
     await narrowPage.getByRole('button', { name: 'Open sidebar', exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
     await narrowPage.locator('[data-testid="nobei-model-selection"][data-model-status="ready"]')
       .waitFor({ state: 'visible', timeout: 30_000 })
@@ -463,12 +544,24 @@ async function execute(evidenceRoot) {
       restoredRunId,
       modelSelection,
       displayedModel,
+      secondRunId,
       screens,
       reviewActions,
       knowledgePointCount,
       filePreview,
-      sidebarCollapsedForNarrow: true,
+      sidebarCollapsedForNarrow,
       narrowContentWidth,
+      history: {
+        collapsedByDefault: historyCollapsedByDefault,
+        retainedRunCount,
+        hostLayoutUnchanged: Math.abs(hostBeforeHistory - hostAfterHistory) <= 1,
+        contentWidthBefore,
+        contentWidthAfter,
+        panelWidthBefore,
+        panelWidthAfter,
+        globalWithoutSessionStorage,
+        navigationProviderCalls,
+      },
       productRequests,
       ledgerBeforeImport,
       rawFakeLedger,
