@@ -100,6 +100,40 @@ async function flush() {
 }
 
 describe('phase1d workspace lifecycle', () => {
+  test('launches one DSH conversation import with the current model and adopts its run', async () => {
+    const storage = new MemoryStorage()
+    const api = fakeApi({
+      importDshConversations: vi.fn(async () => ({
+        runId: 'job_0123456789abcdefabcd', attemptId: 'attempt_1', revision: 2,
+        modelSelection,
+      })),
+      getRun: vi.fn(() => new Promise<RunSnapshot>(() => undefined)),
+      listEvents: vi.fn(() => new Promise<EventPage>(() => undefined)),
+    })
+    const app = mount(api, storage)
+    await flush()
+
+    let succeeded!: boolean
+    await act(async () => {
+      succeeded = await app.latest.importDshConversations({
+        sessionIds: ['session-a', 'session-b'],
+        expectedDigest: 'd'.repeat(64),
+      })
+    })
+
+    expect(succeeded).toBe(true)
+    expect(api.importDshConversations).toHaveBeenCalledOnce()
+    expect(api.importDshConversations).toHaveBeenCalledWith({
+      sessionIds: ['session-a', 'session-b'],
+      expectedDigest: 'd'.repeat(64),
+      modelSelection,
+    }, expect.any(AbortSignal))
+    expect(api.importText).not.toHaveBeenCalled()
+    expect(app.latest.screen).toBe('processing')
+    expect(readSessionState(storage, 'session-1').runId).toBe('job_0123456789abcdefabcd')
+    act(() => app.renderer.unmount())
+  })
+
   test('deletes a non-current run without changing the open workspace', async () => {
     const storage = new MemoryStorage()
     writeSessionState(storage, 'session-1', { version: 1, runId: 'job_current', lastEventSeq: 0 })

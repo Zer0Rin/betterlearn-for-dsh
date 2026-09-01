@@ -51,6 +51,7 @@ export interface WorkspaceController {
   ordinarySession: boolean
   openRun(runId: string): void
   importText(input: ImportTextInput): Promise<boolean>
+  importDshConversations(input: { sessionIds: string[]; expectedDigest: string }): Promise<boolean>
   retry(): Promise<void>
   reload(): Promise<void>
   selectCandidate(candidateId: string): void
@@ -299,7 +300,10 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
     }
   }, [readModelDirectory, ordinarySession, refreshModelSelection, sessionId, setFailure, storage])
 
-  const adoptImport = useCallback(async (pending: Promise<ImportLaunch>): Promise<boolean> => {
+  const adoptImport = useCallback(async (
+    pending: Promise<ImportLaunch>,
+    rethrowConversationChange = false,
+  ): Promise<boolean> => {
     commandBusy.current = true
     setBusy(true)
     setMessage(undefined)
@@ -319,6 +323,9 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
       startPoll(launch.runId, 0)
       return true
     } catch (error) {
+      if (rethrowConversationChange
+        && error instanceof ProductApiError
+        && error.code === 'DSH_CONVERSATION_CHANGED') throw error
       if (mounted.current) setFailure(error)
       return false
     } finally {
@@ -328,27 +335,56 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
     }
   }, [sessionId, setFailure, startPoll, storage])
 
+  const resolveImportModelSelection = useCallback((): ModelSelectionSnapshot | Promise<ModelSelectionSnapshot> => {
+    try {
+      return currentModelSelection()
+    } catch (error) {
+      if (modelLoadPromise.current === undefined) throw error
+      return modelLoadPromise.current
+    }
+  }, [currentModelSelection])
+
   const importText = useCallback(async (input: ImportTextInput) => {
     const existing = pendingImports.get(sessionId)
     if (existing !== undefined) return adoptImport(existing)
     if (commandBusy.current) return false
-    let selected: ModelSelectionSnapshot
     try {
-      try {
-        selected = currentModelSelection()
-      } catch (error) {
-        if (modelLoadPromise.current === undefined) throw error
-        selected = await modelLoadPromise.current
-      }
+      const selection = resolveImportModelSelection()
+      const selected = selection instanceof Promise ? await selection : selection
+      const controller = new AbortController()
+      const pending = api.importText({ ...input, modelSelection: selected }, controller.signal)
+      pendingImports.set(sessionId, pending)
+      return adoptImport(pending)
     } catch (error) {
       setFailure(error)
       return false
     }
-    const controller = new AbortController()
-    const pending = api.importText({ ...input, modelSelection: selected }, controller.signal)
-    pendingImports.set(sessionId, pending)
-    return adoptImport(pending)
-  }, [adoptImport, api, currentModelSelection, sessionId, setFailure])
+  }, [adoptImport, api, resolveImportModelSelection, sessionId, setFailure])
+
+  const importDshConversations = useCallback(async (input: {
+    sessionIds: string[]
+    expectedDigest: string
+  }): Promise<boolean> => {
+    const existing = pendingImports.get(sessionId)
+    if (existing !== undefined) return adoptImport(existing, true)
+    if (commandBusy.current) return false
+    try {
+      const selection = resolveImportModelSelection()
+      const selected = selection instanceof Promise ? await selection : selection
+      const controller = new AbortController()
+      const pending = api.importDshConversations({
+        sessionIds: [...input.sessionIds],
+        expectedDigest: input.expectedDigest,
+        modelSelection: selected,
+      }, controller.signal)
+      pendingImports.set(sessionId, pending)
+      return adoptImport(pending, true)
+    } catch (error) {
+      if (error instanceof ProductApiError && error.code === 'DSH_CONVERSATION_CHANGED') throw error
+      setFailure(error)
+      return false
+    }
+  }, [adoptImport, api, resolveImportModelSelection, sessionId, setFailure])
 
   useEffect(() => {
     const pending = pendingImports.get(sessionId)
@@ -596,7 +632,7 @@ export function useNobeiWorkspace(options: ModelSelectionInput & {
   return {
     currentRunId, screen, run, progress, events, candidates, knowledgePoints, busy, activeCandidateId,
     submittingCandidateId, serviceUnavailable, message, modelSelection,
-    modelDirectoryStatus, ordinarySession, openRun, importText, retry, reload,
+    modelDirectoryStatus, ordinarySession, openRun, importText, importDshConversations, retry, reload,
     selectCandidate: setActiveCandidateId, review, updateKnowledgePoint, deleteRun, reset,
   }
 }

@@ -47,6 +47,12 @@ describe('phase1d scoped styles', () => {
     expect(CLIENT_CSS).toContain('font-size: 14px')
     expect(CLIENT_CSS).toContain('font-size: 13px')
     expect(CLIENT_CSS).toContain('.nobei-client__masthead-intro, .nobei-client__active-model, .nobei-client__result-meta { display: none; }')
+    expect(CLIENT_CSS).toContain('.nobei-client__source-cards')
+    expect(CLIENT_CSS).toContain('.nobei-client__conversation-list')
+    expect(CLIENT_CSS).toContain('.nobei-client__conversation-preview')
+    expect(CLIENT_CSS).toContain('max-height: min(48vh, 520px)')
+    expect(CLIENT_CSS).toContain('.nobei-client__conversation-actions')
+    expect(CLIENT_CSS).toContain('position: sticky')
     expect(CLIENT_CSS).toContain('.betterlearn-floating-panel[data-compact-height="true"] .nobei-client__masthead')
     const compactFontSizes = [...CLIENT_CSS.matchAll(/\.nobei-client \{[^}]*font-size:\s*(\d+)px/g)]
       .map(match => Number(match[1]))

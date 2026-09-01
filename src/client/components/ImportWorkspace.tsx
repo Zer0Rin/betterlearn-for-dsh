@@ -10,6 +10,8 @@ import { documentPreviewError, useDocumentPreview } from '../use-document-previe
 import type { ModelSelectionSnapshot } from '../types.js'
 import type { ModelDirectoryStatus } from '../use-nobei-workspace.js'
 import { modelSelectionLabel } from '../model-directory-bridge.js'
+import { DshConversationImport } from './DshConversationImport.js'
+import type { DshConversationSummary } from '../dsh-conversation-sessions.js'
 
 export interface ImportWorkspaceProps {
   submitting: boolean
@@ -18,11 +20,15 @@ export interface ImportWorkspaceProps {
   modelStatus: ModelDirectoryStatus
   ordinarySession: boolean
   onSubmit(input: ImportTextInput): Promise<boolean>
+  conversations: DshConversationSummary[]
+  previewDshConversations: ClientApi['previewDshConversations']
+  onSubmitDsh(input: { sessionIds: string[]; expectedDigest: string }): Promise<boolean>
   previewDocument?: ClientApi['previewDocument']
   now?: Date
 }
 
 type InputMode = 'file' | 'paste'
+type ImportSource = 'landing' | 'document' | 'dsh'
 
 interface FileDraft {
   input: ImportTextInput
@@ -41,8 +47,10 @@ function validationMessage(input: ImportTextInput | undefined): string | undefin
 }
 
 export function ImportWorkspace({
-  submitting, error, modelSelection, modelStatus, ordinarySession, onSubmit, previewDocument, now = new Date(),
+  submitting, error, modelSelection, modelStatus, ordinarySession, onSubmit,
+  conversations, previewDshConversations, onSubmitDsh, previewDocument, now = new Date(),
 }: ImportWorkspaceProps) {
+  const [source, setSource] = useState<ImportSource>('landing')
   const [mode, setMode] = useState<InputMode>('file')
   const [pasteName, setPasteName] = useState(() => defaultPasteFilename(now))
   const [pasteText, setPasteText] = useState('')
@@ -134,6 +142,38 @@ export function ImportWorkspace({
     }
   }
 
+  if (source === 'landing') {
+    return <section className="nobei-client__import" aria-labelledby="nobei-import-title">
+      <header>
+        <p className="nobei-client__eyebrow">新建学习材料</p>
+        <h2 id="nobei-import-title">选择知识来源</h2>
+        <p>从已有 DSH 问答、文件或粘贴正文开始。每次导入会创建一个独立提取任务。</p>
+      </header>
+      <div className="nobei-client__source-cards">
+        <button type="button" aria-label="从 DSH 对话提取" disabled={submitting} onClick={() => setSource('dsh')}>
+          <strong>从 DSH 对话提取</strong><span>选择一个或多个相关历史对话，先预览，再合并提取。</span>
+        </button>
+        <button type="button" aria-label="上传文件" disabled={submitting} onClick={() => { setMode('file'); setSource('document') }}>
+          <strong>上传文件</strong><span>支持 TXT、Markdown 和有文字层的 PDF。</span>
+        </button>
+        <button type="button" aria-label="粘贴正文" disabled={submitting} onClick={() => { setMode('paste'); setSource('document') }}>
+          <strong>粘贴正文</strong><span>直接粘贴一段需要整理和复习的材料。</span>
+        </button>
+      </div>
+      {!ordinarySession && <p className="nobei-client__error" role="alert">
+        当前是子 Agent 会话，请在普通会话中使用 BetterLearn。
+      </p>}
+      {error && <p className="nobei-client__error" role="alert">{error}</p>}
+    </section>
+  }
+
+  if (source === 'dsh') {
+    return <DshConversationImport conversations={conversations} submitting={submitting}
+      error={error} modelSelection={modelSelection} modelStatus={modelStatus}
+      ordinarySession={ordinarySession} previewDshConversations={previewDshConversations}
+      onSubmit={onSubmitDsh} onBack={() => setSource('landing')} />
+  }
+
   return (
     <section className="nobei-client__import" aria-labelledby="nobei-import-title">
       <header>
@@ -141,6 +181,9 @@ export function ImportWorkspace({
         <h2 id="nobei-import-title">从一段原文开始</h2>
         <p>导入 TXT、Markdown、有文字层的 PDF，或直接粘贴文本。Nobei 会先定位证据，再交给你审核。</p>
       </header>
+
+      <button className="nobei-client__back" type="button" disabled={submitting}
+        onClick={() => setSource('landing')}>返回选择来源</button>
 
       <div className="nobei-client__tabs" role="tablist" aria-label="导入方式">
         <button type="button" role="tab" aria-selected={mode === 'file'} disabled={submitting}
