@@ -1,5 +1,5 @@
 import { build } from 'esbuild'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 
 const result = await build({
   entryPoints: ['src/client/index.tsx'],
@@ -23,3 +23,7 @@ ${body}
 
 await mkdir('lib', { recursive: true })
 await writeFile('lib/client.js', wrapped, 'utf8')
+await Promise.all([
+  rm('lib/client/learning-preview.js', { force: true }),
+  rm('lib/types/client/learning-preview.d.ts', { force: true }),
+])

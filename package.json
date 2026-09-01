@@ -65,7 +65,7 @@
     }
   },
   "scripts": {
-    "build": "node scripts/clean-build.mjs && tsc -p tsconfig.host.json && tsc -p tsconfig.client.json && node scripts/build-client.mjs",
+    "build": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json && node scripts/build-client.mjs",
     "preview:learning:build": "node scripts/build-learning-preview.mjs",
     "pretest": "pnpm build",
     "test": "vitest run",

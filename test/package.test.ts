@@ -97,12 +97,11 @@ describe('phase1 external bundle package', () => {
     expect(pkg.scripts.prepack).not.toContain('stage:v8')
   })
 
-  test('cleans generated output before building so removed modules are not packed', async () => {
-    const pkg = JSON.parse(await readFile('package.json', 'utf8'))
-    const cleaner = await readFile('scripts/clean-build.mjs', 'utf8')
+  test('removes retired preview modules from generated package output', async () => {
+    const builder = await readFile('scripts/build-client.mjs', 'utf8')
 
-    expect(pkg.scripts.build).toMatch(/^node scripts\/clean-build\.mjs && /)
-    expect(cleaner).toContain("rm('lib', { recursive: true, force: true })")
+    expect(builder).toContain("rm('lib/client/learning-preview.js', { force: true })")
+    expect(builder).toContain("rm('lib/types/client/learning-preview.d.ts', { force: true })")
   })
 })
 
