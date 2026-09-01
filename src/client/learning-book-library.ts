@@ -113,6 +113,29 @@ export function createLearningBook(input: {
   }
 }
 
+export function hasLearningStarted(book: LearningBook): boolean {
+  return book.courseId !== undefined || book.progress !== undefined
+}
+
+export function reviseLearningBook(
+  book: LearningBook,
+  input: { title: string; points: KnowledgePointSnapshot[] },
+  newIdentity: LearningBookIdentity,
+): { book: LearningBook; replacesBookId?: string } {
+  if (hasLearningStarted(book)) {
+    return {
+      book: createLearningBook({ ...input, sourceText: book.sourceText }, newIdentity),
+    }
+  }
+  return {
+    book: createLearningBook({ ...input, sourceText: book.sourceText }, {
+      bookId: book.bookId,
+      createdAt: book.createdAt,
+    }),
+    replacesBookId: book.bookId,
+  }
+}
+
 export function updateLearningBookCourse(book: LearningBook, course: LearningCourse): LearningBook {
   if (course.clientBookId !== book.bookId) return book
   return {

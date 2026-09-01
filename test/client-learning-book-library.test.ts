@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   LEARNING_BOOK_STORAGE_KEY,
   createLearningBook,
+  reviseLearningBook,
   updateLearningBookCourse,
   readLearningBooks,
   writeLearningBooks,
@@ -25,7 +26,48 @@ const point: KnowledgePointSnapshot = {
     contextBefore: '', contextAfter: '。' }],
 }
 
+const second: KnowledgePointSnapshot = {
+  ...point,
+  knowledgePointId: 'kp_scope',
+  title: '词法作用域',
+  statement: '词法作用域由代码书写位置确定。',
+}
+
 describe('learning book library', () => {
+  test('revises an unstarted book in place without mutating its snapshots', () => {
+    const original = createLearningBook({ title: '旧标题', points: [point], sourceText: '正文' },
+      { bookId: 'book-1', createdAt: '2026-09-01T10:00:00.000Z' })
+
+    const result = reviseLearningBook(original, { title: '新标题', points: [second, point] },
+      { bookId: 'unused', createdAt: '2026-09-01T11:00:00.000Z' })
+
+    expect(result.replacesBookId).toBe('book-1')
+    expect(result.book).toMatchObject({
+      bookId: 'book-1', title: '新标题', createdAt: original.createdAt,
+    })
+    expect(result.book.points).toEqual([second, point])
+    expect(original).toMatchObject({ title: '旧标题', points: [point] })
+    expect(result.book.points).not.toBe(original.points)
+  })
+
+  test('revises a started book as a fresh version without inherited progress', () => {
+    const started = {
+      ...createLearningBook({ title: '原书', points: [point], sourceText: '正文' },
+        { bookId: 'book-old', createdAt: '2026-09-01T10:00:00.000Z' }),
+      courseId: 'course_0123456789abcdefabcd',
+      progress: { completed: 1, total: 1, mastery: 70 },
+    }
+
+    const result = reviseLearningBook(started, { title: '原书 · 新版', points: [point] },
+      { bookId: 'book-new', createdAt: '2026-09-01T11:00:00.000Z' })
+
+    expect(result.replacesBookId).toBeUndefined()
+    expect(result.book).toMatchObject({ bookId: 'book-new', title: '原书 · 新版' })
+    expect(result.book).not.toHaveProperty('courseId')
+    expect(result.book).not.toHaveProperty('progress')
+    expect(started.courseId).toBe('course_0123456789abcdefabcd')
+  })
+
   test('creates distinct books from the same formal knowledge points', () => {
     const first = createLearningBook({ title: '闭包训练', points: [point], sourceText: '正文' },
       { bookId: 'book-1', createdAt: '2026-09-01T10:00:00.000Z' })
