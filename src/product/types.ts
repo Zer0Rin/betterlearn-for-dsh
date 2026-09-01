@@ -199,6 +199,11 @@ export interface LearningCourseSyncParams {
 
 export interface LearningCourseParams { courseId: string }
 
+export interface LearningCourseDeleteResult extends Record<string, unknown> {
+  courseId: string
+  deleted: true
+}
+
 export interface LearningAttemptParams {
   assessmentId: string
   optionId: string

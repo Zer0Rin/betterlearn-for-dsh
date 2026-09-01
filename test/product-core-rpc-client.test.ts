@@ -82,6 +82,7 @@ describe('FixedCoreRpcClient', () => {
     }
     const syncPending = client.syncLearningCourse(sync)
     const getPending = client.getLearningCourse({ courseId: 'course_0123456789abcdefabcd' })
+    const deletePending = client.deleteLearningCourse({ courseId: 'course_0123456789abcdefabcd' })
     const attempt = {
       assessmentId: 'asm_0123456789abcdefabcd',
       optionId: 'opt_0123456789abcdefabcd',
@@ -92,14 +93,17 @@ describe('FixedCoreRpcClient', () => {
     expect(requests.map(({ method, params }) => ({ method, params }))).toEqual([
       { method: 'learning_courses.sync', params: sync },
       { method: 'learning_courses.get', params: { courseId: 'course_0123456789abcdefabcd' } },
+      { method: 'learning_courses.delete', params: { courseId: 'course_0123456789abcdefabcd' } },
       { method: 'learning_attempts.submit', params: attempt },
     ])
     input.write(result(1, { courseId: 'course_0123456789abcdefabcd' }))
     input.write(result(2, { courseId: 'course_0123456789abcdefabcd' }))
-    input.write(result(3, { attempt: { correct: true } }))
-    await expect(Promise.all([syncPending, getPending, attemptPending])).resolves.toEqual([
+    input.write(result(3, { courseId: 'course_0123456789abcdefabcd', deleted: true }))
+    input.write(result(4, { attempt: { correct: true } }))
+    await expect(Promise.all([syncPending, getPending, deletePending, attemptPending])).resolves.toEqual([
       { courseId: 'course_0123456789abcdefabcd' },
       { courseId: 'course_0123456789abcdefabcd' },
+      { courseId: 'course_0123456789abcdefabcd', deleted: true },
       { attempt: { correct: true } },
     ])
   })

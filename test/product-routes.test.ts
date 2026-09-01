@@ -66,6 +66,7 @@ function operations(override: Partial<ProductOperations> = {}): ProductOperation
     deleteRun: vi.fn(async id => ({ runId: id, deleted: true as const })),
     syncLearningCourse: vi.fn(async params => ({ courseId, ...params } as any)),
     getLearningCourse: vi.fn(async id => ({ courseId: id } as any)),
+    deleteLearningCourse: vi.fn(async id => ({ courseId: id, deleted: true as const })),
     submitLearningAttempt: vi.fn(async params => ({ attempt: { ...params, correct: true } } as any)),
     ...override,
   }
@@ -156,6 +157,18 @@ describe('product route table', () => {
     expect(loaded.status).toBe(200)
     expect(ops.getLearningCourse).toHaveBeenCalledWith(courseId)
 
+    const deleted = await send(port, {
+      method: 'DELETE', path: `/nobei/v1/learning-courses/${courseId}`,
+    })
+    expect(deleted.status).toBe(200)
+    expect(ops.deleteLearningCourse).toHaveBeenCalledWith(courseId)
+
+    expect((await send(port, {
+      method: 'DELETE', path: `/nobei/v1/learning-courses/${courseId}`,
+      body: JSON.stringify({ confirm: true }),
+      headers: { 'content-length': String(Buffer.byteLength(JSON.stringify({ confirm: true }))) },
+    })).status).toBe(400)
+
     const attempt = { optionId, idempotencyKey }
     const submitted = await send(port, {
       method: 'POST', path: `/nobei/v1/learning-assessments/${assessmentId}/attempts`,
@@ -167,6 +180,7 @@ describe('product route table', () => {
     for (const invalid of [
       { method: 'POST', path: '/nobei/v1/learning-courses', body: JSON.stringify({ ...sync, extra: true }) },
       { method: 'GET', path: '/nobei/v1/learning-courses/course_bad' },
+      { method: 'DELETE', path: '/nobei/v1/learning-courses/course_bad' },
       { method: 'POST', path: `/nobei/v1/learning-assessments/${assessmentId}/attempts`, body: JSON.stringify({ ...attempt, optionId: '../bad' }) },
     ]) {
       expect((await send(port, invalid)).status).toBe(400)

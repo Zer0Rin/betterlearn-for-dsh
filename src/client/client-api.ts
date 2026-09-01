@@ -16,6 +16,7 @@ import type {
   RunDeleteResult,
   LearningAttemptResult,
   LearningCourse,
+  LearningCourseDeleteResult,
   LearningCourseSyncRequest,
 } from './types.js'
 import type { GenerationProgress } from '../generation-progress.js'
@@ -148,6 +149,12 @@ export function createClientApi(): ClientApi {
     },
     getLearningCourse(courseId: string, signal?: AbortSignal) {
       return get<LearningCourse>(
+        `/nobei/v1/learning-courses/${encodeURIComponent(courseId)}`,
+        signal,
+      )
+    },
+    deleteLearningCourse(courseId: string, signal?: AbortSignal) {
+      return del<LearningCourseDeleteResult>(
         `/nobei/v1/learning-courses/${encodeURIComponent(courseId)}`,
         signal,
       )

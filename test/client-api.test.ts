@@ -196,6 +196,11 @@ describe('phase1d Client API', () => {
       method: 'GET', headers: {}, signal: controller.signal,
     })
 
+    await api.deleteLearningCourse(courseId, controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith(`/nobei/v1/learning-courses/${courseId}`, {
+      method: 'DELETE', headers: {}, signal: controller.signal,
+    })
+
     await api.submitLearningAttempt(assessmentId, { optionId, idempotencyKey }, controller.signal)
     expect(fetchMock).toHaveBeenLastCalledWith(
       `/nobei/v1/learning-assessments/${assessmentId}/attempts`,

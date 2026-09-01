@@ -21,6 +21,7 @@ import type {
   KnowledgePointList,
   LearningAttemptParams,
   LearningAttemptResult,
+  LearningCourseDeleteResult,
   LearningCourseParams,
   LearningCourseSnapshot,
   LearningCourseSyncParams,
@@ -159,6 +160,15 @@ export class FixedCoreRpcClient {
     return this.#request(
       'learning_courses.get', params, CORE_READ_RPC_TIMEOUT_MS, signal,
     ) as Promise<LearningCourseSnapshot>
+  }
+
+  deleteLearningCourse(
+    params: LearningCourseParams,
+    signal?: AbortSignal,
+  ): Promise<LearningCourseDeleteResult> {
+    return this.#request(
+      'learning_courses.delete', params, CORE_WRITE_RPC_TIMEOUT_MS, signal,
+    ) as Promise<LearningCourseDeleteResult>
   }
 
   submitLearningAttempt(params: LearningAttemptParams, signal?: AbortSignal): Promise<LearningAttemptResult> {

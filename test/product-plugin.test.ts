@@ -168,6 +168,16 @@ describe('phase1c product plugin', () => {
     const learning = { clientBookId: 'book-one', title: '学习书', knowledgePointIds: ['kp_0123456789abcdefabcd'] }
     await operations.syncLearningCourse(learning)
     expect(syncLearningCourse).toHaveBeenCalledWith(learning, undefined)
+    const deleteLearningCourse = vi.fn(async () => ({
+      courseId: 'course_0123456789abcdefabcd', deleted: true as const,
+    }))
+    supervisor.withReadyClient.mockImplementation(async (use: (client: {
+      deleteLearningCourse: typeof deleteLearningCourse,
+    }) => unknown) => use({ deleteLearningCourse }))
+    await operations.deleteLearningCourse('course_0123456789abcdefabcd')
+    expect(deleteLearningCourse).toHaveBeenCalledWith({
+      courseId: 'course_0123456789abcdefabcd',
+    }, undefined)
     const updateKnowledgePoint = vi.fn(async () => ({ knowledgePoint: {} }))
     supervisor.withReadyClient.mockImplementation(async (use: (client: { updateKnowledgePoint: typeof updateKnowledgePoint }) => unknown) => use({ updateKnowledgePoint }))
     const update = { knowledgePointId: 'kp_0123456789abcdefabcd', title: '新标题', statement: '新陈述' }

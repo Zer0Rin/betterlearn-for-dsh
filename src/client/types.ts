@@ -166,6 +166,11 @@ export interface LearningCourseSyncRequest {
   knowledgePointIds: string[]
 }
 
+export interface LearningCourseDeleteResult {
+  courseId: string
+  deleted: true
+}
+
 export interface LearningOption {
   optionId: string
   label: string
@@ -296,6 +301,7 @@ export interface ClientApi {
   deleteRun(runId: string, signal?: AbortSignal): Promise<RunDeleteResult>
   syncLearningCourse(input: LearningCourseSyncRequest, signal?: AbortSignal): Promise<LearningCourse>
   getLearningCourse(courseId: string, signal?: AbortSignal): Promise<LearningCourse>
+  deleteLearningCourse(courseId: string, signal?: AbortSignal): Promise<LearningCourseDeleteResult>
   submitLearningAttempt(
     assessmentId: string,
     input: { optionId: string; idempotencyKey: string },

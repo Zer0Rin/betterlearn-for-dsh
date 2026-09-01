@@ -26,6 +26,7 @@ import type {
   KnowledgePointList,
   LearningAttemptParams,
   LearningAttemptResult,
+  LearningCourseDeleteResult,
   LearningCourseSnapshot,
   LearningCourseSyncParams,
   ModelSelectionSnapshot,
@@ -54,6 +55,7 @@ export interface ProductOperations {
   deleteRun(runId: string, signal?: AbortSignal): Promise<RunDeleteResult>
   syncLearningCourse(params: LearningCourseSyncParams, signal?: AbortSignal): Promise<LearningCourseSnapshot>
   getLearningCourse(courseId: string, signal?: AbortSignal): Promise<LearningCourseSnapshot>
+  deleteLearningCourse(courseId: string, signal?: AbortSignal): Promise<LearningCourseDeleteResult>
   submitLearningAttempt(params: LearningAttemptParams, signal?: AbortSignal): Promise<LearningAttemptResult>
 }
 
@@ -78,7 +80,7 @@ type RouteMatch =
   | { kind: 'knowledge-points'; method: 'GET'; runId: string }
   | { kind: 'knowledge-point-update'; method: 'PATCH'; knowledgePointId: string }
   | { kind: 'learning-course-sync'; method: 'POST' }
-  | { kind: 'learning-course'; method: 'GET'; courseId: string }
+  | { kind: 'learning-course'; method: 'GET' | 'DELETE'; courseId: string }
   | { kind: 'learning-attempt'; method: 'POST'; assessmentId: string }
 
 function sendJson(res: ServerResponse, status: number, value: unknown, extra?: Record<string, string>): void {
@@ -108,7 +110,9 @@ function matchRoute(url: URL, requestMethod?: string): RouteMatch | undefined {
   }
   let learningMatch = /^\/nobei\/v1\/learning-courses\/([^/]+)$/.exec(url.pathname)
   if (learningMatch && url.search === '') {
-    return { kind: 'learning-course', method: 'GET', courseId: learningMatch[1] }
+    return requestMethod === 'DELETE'
+      ? { kind: 'learning-course', method: 'DELETE', courseId: learningMatch[1] }
+      : { kind: 'learning-course', method: 'GET', courseId: learningMatch[1] }
   }
   learningMatch = /^\/nobei\/v1\/learning-assessments\/([^/]+)\/attempts$/.exec(url.pathname)
   if (learningMatch && url.search === '') {
@@ -468,7 +472,9 @@ export function registerProductRoutes(
         else if (route.kind === 'knowledge-points') result = await operations.listKnowledgePoints(route.runId)
         else if (route.kind === 'knowledge-point-update') result = await operations.updateKnowledgePoint(updateParams as UpdateKnowledgePointParams)
         else if (route.kind === 'learning-course-sync') result = await operations.syncLearningCourse(learningCourseParams as LearningCourseSyncParams)
-        else if (route.kind === 'learning-course') result = await operations.getLearningCourse(route.courseId)
+        else if (route.kind === 'learning-course') result = route.method === 'DELETE'
+          ? await operations.deleteLearningCourse(route.courseId)
+          : await operations.getLearningCourse(route.courseId)
         else result = await operations.submitLearningAttempt(learningAttemptParams as LearningAttemptParams)
         if (!res.destroyed && !res.writableEnded) {
           sendJson(res, route.kind === 'import' || route.kind === 'dsh-import' || route.kind === 'retry' ? 202 : 200, { ok: true, result })
