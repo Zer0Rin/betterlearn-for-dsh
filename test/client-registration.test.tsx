@@ -1,115 +1,64 @@
-import { bindModelSelection } from './helpers/model-selection.js'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
-import { createElement } from 'react'
-import { act, create } from 'react-test-renderer'
-import { describe, expect, test, vi } from 'vitest'
-import { apply } from '../src/client/index.js'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { apply, inject } from '../src/client/index.js'
 
-describe('Nobei conversation view registration', () => {
-  test('registers the public conversation.view list entry and disposes it', () => {
-    const values = new Map<string, string>()
-    vi.stubGlobal('window', {
-      sessionStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-        clear: () => values.clear(),
-        key: () => null,
-        get length() { return values.size },
-      },
-      setTimeout,
-      clearTimeout,
-    })
-    vi.stubGlobal('document', {
+const reactRoot = vi.hoisted(() => ({ render: vi.fn(), unmount: vi.fn() }))
+const createRoot = vi.hoisted(() => vi.fn(() => reactRoot))
+
+vi.mock('react-dom/client', () => ({ createRoot }))
+
+describe('BetterLearn floating client registration', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    createRoot.mockClear()
+    reactRoot.render.mockClear()
+    reactRoot.unmount.mockClear()
+  })
+
+  test('mounts one body-owned React root and disposes it without slot registration', () => {
+    const attributes: Record<string, string> = {}
+    const container = {
+      attributes,
+      setAttribute(name: string, value: string) { attributes[name] = value },
+      remove: vi.fn(),
+    }
+    const appended: unknown[] = []
+    const document = {
       visibilityState: 'visible',
-      querySelector: () => null,
-      createElement: () => ({ setAttribute() {}, textContent: '' }),
-      head: { appendChild() {} },
+      querySelector: vi.fn(() => null),
+      createElement: vi.fn((tag: string) => tag === 'style'
+        ? { setAttribute() {}, textContent: '' }
+        : container),
+      head: { appendChild(node: unknown) { appended.push(node) } },
+      body: { appendChild: vi.fn((node: unknown) => appended.push(node)) },
       addEventListener() {},
       removeEventListener() {},
-    })
-    const core = new SlotCore()
-    const disposeOwner = core.register({
-      name: 'root',
-      children: {
-        'conversation.view': { kind: 'list', scope: 'session' },
-        'conversation.input.dock': { kind: 'list', scope: 'session' },
-      },
-    }, () => null)
-    let disposeEntry: (() => void) | undefined
-    const slots = {
-      inject(key: string, callback: () => (() => void)) {
-        expect(['conversation.view', 'conversation.input.dock']).toContain(key)
-        const dispose = callback()
-        if (key === 'conversation.view') disposeEntry = dispose
-        return vi.fn()
-      },
-      register: core.register.bind(core),
     }
-
-    const modelDirectories = {
-      directoryFor: vi.fn(() => ({
-        load: vi.fn(async () => ({
-          current: { provider: 'provider-a', model: 'model-a' }, routable: true,
-        })),
-      })),
+    const storage = {
+      length: 0,
+      clear() {}, getItem: () => null, key: () => null, removeItem() {}, setItem() {},
     }
-    apply({
-      slots,
-      modelDirectories,
-      sessions: { subagentAddress: vi.fn(() => undefined) },
-    } as unknown as Context)
-    const entries = core.entries('conversation.view')
-    expect(entries).toHaveLength(1)
-    expect(entries[0]?.options).toMatchObject({
-      id: 'nobei',
-      order: 50,
-      label: 'Nobei',
-    })
-    expect(entries[0]!.inject).toBeTypeOf('function')
-    const injected = entries[0]!.inject!('session-1' as never) as any
-    expect(injected.hooks.modelDirectory.getSnapshot).toBeTypeOf('function')
-    expect(injected).not.toHaveProperty('modelDirectories')
-    expect(injected.loadModelSelection).toBeTypeOf('function')
+    vi.stubGlobal('document', document)
+    vi.stubGlobal('window', { sessionStorage: storage, setTimeout, clearTimeout })
 
-    let renderer: ReturnType<typeof create>
-    act(() => {
-      renderer = create(createElement(entries[0]!.component, { sessionId: 'session-1', ...bindModelSelection(injected) }))
-    })
-    expect(renderer!.root.findByProps({ 'data-testid': 'nobei-client-view' })).toBeDefined()
-    act(() => renderer!.unmount())
+    const sessions = {
+      list: {
+        getSnapshot: () => ({ ids: [], byId: {}, current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined }),
+        subscribe: () => () => undefined,
+      },
+      subagentAddress: () => undefined,
+    }
+    const dispose = apply({ sessions, modelDirectories: {} } as unknown as Context)
 
-    const docks = core.entries('conversation.input.dock')
-    expect(docks).toHaveLength(1)
-    expect(docks[0]?.options).toMatchObject({ id: 'nobei-blank-import', order: 5 })
-    let dock: ReturnType<typeof create>
-    act(() => {
-      dock = create(createElement(docks[0]!.component, {
-        sessionId: 'session-1',
-        session: { blank: true },
-        ...bindModelSelection(docks[0]!.inject!('session-1' as never) as any),
-      }))
-    })
-    expect(dock!.root.findByProps({ 'data-testid': 'nobei-client-view' })).toBeDefined()
-    act(() => dock!.unmount())
+    expect(inject).toEqual(['modelDirectories', 'sessions'])
+    expect(createRoot).toHaveBeenCalledOnce()
+    expect(document.body.appendChild).toHaveBeenCalledWith(container)
+    expect(container.attributes['data-betterlearn-floating-root']).toBe('')
+    expect(reactRoot.render).toHaveBeenCalledOnce()
+    expect(dispose).toBeTypeOf('function')
 
-    let nonBlank: ReturnType<typeof create>
-    act(() => {
-      nonBlank = create(createElement(docks[0]!.component, {
-        sessionId: 'session-1',
-        session: { blank: false },
-        ...bindModelSelection(docks[0]!.inject!('session-1' as never) as any),
-      }))
-    })
-    expect(nonBlank!.toJSON()).toBeNull()
-    act(() => nonBlank!.unmount())
-
-    disposeEntry?.()
-    expect(core.entries('conversation.view')).toEqual([])
-    disposeOwner()
-    vi.unstubAllGlobals()
+    dispose()
+    expect(reactRoot.unmount).toHaveBeenCalledOnce()
+    expect(container.remove).toHaveBeenCalledOnce()
   })
 })

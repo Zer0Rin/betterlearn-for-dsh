@@ -8,7 +8,7 @@ const result = await build({
   platform: 'browser',
   format: 'cjs',
   jsx: 'automatic',
-  external: ['react', 'react/jsx-runtime', '@deepseek-ai/*'],
+  external: ['react', 'react/jsx-runtime', 'react-dom/client', '@deepseek-ai/*'],
 })
 const body = result.outputFiles[0].text
 const wrapped = `window.__ModuleLoader__.load({
