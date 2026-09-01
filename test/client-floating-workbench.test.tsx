@@ -2,6 +2,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { BetterLearnFloatingApp } from '../src/client/floating-workbench.js'
 import type { ClientApi } from '../src/client/types.js'
+import { WORKBENCH_SIZE_STORAGE_KEY } from '../src/client/workbench-size.js'
 
 interface SessionSnapshot {
   ids: string[]
@@ -34,6 +35,16 @@ const storage = {
   clear() {}, getItem: vi.fn(() => null), key: () => null, removeItem() {}, setItem: vi.fn(),
 }
 
+class MemoryStorage implements Storage {
+  #items = new Map<string, string>()
+  get length() { return this.#items.size }
+  clear() { this.#items.clear() }
+  getItem(key: string) { return this.#items.get(key) ?? null }
+  key(index: number) { return [...this.#items.keys()][index] ?? null }
+  removeItem(key: string) { this.#items.delete(key) }
+  setItem(key: string, value: string) { this.#items.set(key, value) }
+}
+
 const api = {
   listRuns: vi.fn(async () => ({ runs: [] })),
   importText: vi.fn(), retryRun: vi.fn(), reviewCandidate: vi.fn(),
@@ -53,9 +64,11 @@ const modelDirectories = {
 describe('BetterLearn floating workbench shell', () => {
   let keydown: ((event: { key: string }) => void) | undefined
   let renderer: ReactTestRenderer
+  let windowListeners: Map<string, Set<(event: Record<string, unknown>) => void>>
 
   beforeEach(() => {
     keydown = undefined
+    windowListeners = new Map()
     storage.getItem.mockClear()
     storage.setItem.mockClear()
     vi.stubGlobal('document', {
@@ -67,7 +80,21 @@ describe('BetterLearn floating workbench shell', () => {
         if (type === 'keydown' && keydown === listener) keydown = undefined
       },
     })
-    vi.stubGlobal('window', { setTimeout, clearTimeout })
+    vi.stubGlobal('window', {
+      innerWidth: 1440,
+      innerHeight: 900,
+      setTimeout,
+      clearTimeout,
+      localStorage: new MemoryStorage(),
+      addEventListener(type: string, listener: (event: Record<string, unknown>) => void) {
+        const listeners = windowListeners.get(type) ?? new Set()
+        listeners.add(listener)
+        windowListeners.set(type, listeners)
+      },
+      removeEventListener(type: string, listener: (event: Record<string, unknown>) => void) {
+        windowListeners.get(type)?.delete(listener)
+      },
+    })
   })
 
   afterEach(() => {
@@ -75,12 +102,17 @@ describe('BetterLearn floating workbench shell', () => {
     vi.unstubAllGlobals()
   })
 
-  function renderEmpty() {
+  function renderEmpty(sizeStorage = new MemoryStorage()) {
     const source = sessionSource()
     act(() => {
       renderer = create(<BetterLearnFloatingApp sessions={{ list: source, subagentAddress: () => undefined } as never}
-        modelDirectories={{} as never} storage={storage as never} />)
+        modelDirectories={{} as never} storage={storage as never} sizeStorage={sizeStorage} />)
     })
+    return { source, sizeStorage }
+  }
+
+  function dispatchWindow(type: string, event: Record<string, unknown>) {
+    for (const listener of windowListeners.get(type) ?? []) listener(event)
   }
 
   test('starts collapsed and opens from the BetterLearn launcher', () => {
@@ -157,5 +189,59 @@ describe('BetterLearn floating workbench shell', () => {
     act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
     expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
       .props['data-history-open']).toBe('false')
+  })
+
+  test('renders three anchored resize handles and persists a left-edge resize', () => {
+    const { sizeStorage } = renderEmpty()
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    let panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+    expect(panel.props.style).toMatchObject({
+      '--betterlearn-user-width': '420px',
+      '--betterlearn-user-height': '420px',
+    })
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-resize-bottom' })).toBeDefined()
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-resize-corner' })).toBeDefined()
+
+    const setPointerCapture = vi.fn()
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-resize-left' }).props.onPointerDown({
+      clientX: 600, clientY: 100, pointerId: 7,
+      preventDefault: vi.fn(), currentTarget: { setPointerCapture },
+    }))
+    expect(setPointerCapture).toHaveBeenCalledWith(7)
+    act(() => dispatchWindow('pointermove', { clientX: 520, clientY: 100, pointerId: 7 }))
+    panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+    expect(panel.props.style['--betterlearn-user-width']).toBe('500px')
+    expect(panel.props.style['--betterlearn-user-height']).toBe('420px')
+    expect(panel.props['data-resizing']).toBe('true')
+
+    act(() => dispatchWindow('pointerup', { clientX: 520, clientY: 100, pointerId: 7 }))
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
+      .props['data-resizing']).toBe('false')
+    expect(JSON.parse(sizeStorage.getItem(WORKBENCH_SIZE_STORAGE_KEY) ?? '{}').empty)
+      .toEqual({ width: 500, height: 420 })
+  })
+
+  test('restores sizes independently when the workbench screen changes', async () => {
+    const sizeStorage = new MemoryStorage()
+    sizeStorage.setItem(WORKBENCH_SIZE_STORAGE_KEY, JSON.stringify({
+      empty: { width: 390, height: 440 },
+      import: { width: 520, height: 680 },
+    }))
+    const source = sessionSource()
+    await act(async () => {
+      renderer = create(<BetterLearnFloatingApp
+        sessions={{ list: source, subagentAddress: () => undefined } as never}
+        modelDirectories={modelDirectories} storage={storage as never} sizeStorage={sizeStorage} api={api} />)
+    })
+    act(() => renderer.root.findByProps({ 'data-testid': 'betterlearn-launcher' }).props.onClick())
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' }).props.style)
+      .toMatchObject({ '--betterlearn-user-width': '390px', '--betterlearn-user-height': '440px' })
+
+    await act(async () => {
+      source.setCurrent('session-a')
+      await Promise.resolve(); await Promise.resolve()
+    })
+    expect(renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' }).props.style)
+      .toMatchObject({ '--betterlearn-user-width': '520px', '--betterlearn-user-height': '680px' })
   })
 })
