@@ -190,3 +190,74 @@ export interface RunDeleteResult extends Record<string, unknown> {
 }
 
 export type CoreObjectResult = Record<string, unknown>
+
+export interface LearningCourseSyncParams {
+  clientBookId: string
+  title: string
+  knowledgePointIds: string[]
+}
+
+export interface LearningCourseParams { courseId: string }
+
+export interface LearningAttemptParams {
+  assessmentId: string
+  optionId: string
+  idempotencyKey: string
+}
+
+export interface LearningOption {
+  optionId: string
+  label: string
+}
+
+export interface LearningAssessmentSnapshot {
+  assessmentId: string
+  kind: 'claim_choice' | 'evidence_choice'
+  prompt: string
+  options: LearningOption[]
+  attempt: null | {
+    selectedOptionId: string
+    correct: boolean
+    submittedAt: string
+  }
+}
+
+export interface LearningUnitSnapshot {
+  unitId: string
+  knowledgePointId: string
+  type: 'concept' | 'process' | 'comparison' | 'formula' | 'fact' | 'code'
+  title: string
+  objective: string
+  lesson: { explanation: string; workedExample: string; supplemental: string }
+  evidence: Record<string, unknown>
+  mastery: {
+    status: 'new' | 'remediation_required' | 'learning' | 'mastered' | 'mastered_after_remediation'
+    strength: number
+    dueAt: string | null
+  }
+  check: {
+    main: LearningAssessmentSnapshot
+    remediation: { title: string; body: string }
+    retest: LearningAssessmentSnapshot
+  }
+}
+
+export interface LearningCourseSnapshot extends Record<string, unknown> {
+  courseId: string
+  clientBookId: string
+  title: string
+  status: 'active' | 'archived'
+  progress: { completed: number; total: number; mastery: number }
+  units: LearningUnitSnapshot[]
+}
+
+export interface LearningAttemptResult extends Record<string, unknown> {
+  attempt: {
+    attemptId: string
+    assessmentId: string
+    selectedOptionId: string
+    correct: boolean
+    submittedAt: string
+  }
+  course: LearningCourseSnapshot
+}

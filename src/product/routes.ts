@@ -24,6 +24,10 @@ import type {
   EventList,
   ImportAndPrepareParams,
   KnowledgePointList,
+  LearningAttemptParams,
+  LearningAttemptResult,
+  LearningCourseSnapshot,
+  LearningCourseSyncParams,
   ModelSelectionSnapshot,
   ReviewCandidateParams,
   RetryAndPrepareParams,
@@ -48,6 +52,9 @@ export interface ProductOperations {
   listKnowledgePoints(runId: string, signal?: AbortSignal): Promise<KnowledgePointList>
   updateKnowledgePoint(params: UpdateKnowledgePointParams, signal?: AbortSignal): Promise<CoreObjectResult>
   deleteRun(runId: string, signal?: AbortSignal): Promise<RunDeleteResult>
+  syncLearningCourse(params: LearningCourseSyncParams, signal?: AbortSignal): Promise<LearningCourseSnapshot>
+  getLearningCourse(courseId: string, signal?: AbortSignal): Promise<LearningCourseSnapshot>
+  submitLearningAttempt(params: LearningAttemptParams, signal?: AbortSignal): Promise<LearningAttemptResult>
 }
 
 interface SupervisorState {
@@ -70,6 +77,9 @@ type RouteMatch =
   | { kind: 'review'; method: 'POST'; candidateId: string }
   | { kind: 'knowledge-points'; method: 'GET'; runId: string }
   | { kind: 'knowledge-point-update'; method: 'PATCH'; knowledgePointId: string }
+  | { kind: 'learning-course-sync'; method: 'POST' }
+  | { kind: 'learning-course'; method: 'GET'; courseId: string }
+  | { kind: 'learning-attempt'; method: 'POST'; assessmentId: string }
 
 function sendJson(res: ServerResponse, status: number, value: unknown, extra?: Record<string, string>): void {
   const body = JSON.stringify(value)
@@ -93,6 +103,17 @@ function matchRoute(url: URL, requestMethod?: string): RouteMatch | undefined {
   if (url.pathname === '/nobei/v1/dsh-conversations/preview' && url.search === '') return { kind: 'dsh-preview', method: 'POST' }
   if (url.pathname === '/nobei/v1/dsh-conversations/imports' && url.search === '') return { kind: 'dsh-import', method: 'POST' }
   if (url.pathname === '/nobei/v1/runs' && url.search === '') return { kind: 'runs', method: 'GET' }
+  if (url.pathname === '/nobei/v1/learning-courses' && url.search === '') {
+    return { kind: 'learning-course-sync', method: 'POST' }
+  }
+  let learningMatch = /^\/nobei\/v1\/learning-courses\/([^/]+)$/.exec(url.pathname)
+  if (learningMatch && url.search === '') {
+    return { kind: 'learning-course', method: 'GET', courseId: learningMatch[1] }
+  }
+  learningMatch = /^\/nobei\/v1\/learning-assessments\/([^/]+)\/attempts$/.exec(url.pathname)
+  if (learningMatch && url.search === '') {
+    return { kind: 'learning-attempt', method: 'POST', assessmentId: learningMatch[1] }
+  }
   let match = /^\/nobei\/v1\/runs\/([^/]+)$/.exec(url.pathname)
   if (match && url.search === '') return requestMethod === 'DELETE'
     ? { kind: 'run-delete', method: 'DELETE', runId: match[1] }
@@ -130,8 +151,38 @@ function exactObject(value: unknown, keys: readonly string[]): value is Record<s
   return actual.length === expected.length && actual.every((key, index) => key === expected[index])
 }
 
-function resourceId(value: string, prefix: 'job' | 'cand' | 'kp'): boolean {
+function resourceId(value: string, prefix: 'job' | 'cand' | 'kp' | 'course' | 'asm'): boolean {
   return new RegExp(`^${prefix}_[0-9a-f]{20}$`).test(value)
+}
+
+function parseLearningCourseSync(value: unknown): LearningCourseSyncParams | undefined {
+  if (!exactObject(value, ['clientBookId', 'title', 'knowledgePointIds'])) return undefined
+  if (
+    typeof value.clientBookId !== 'string'
+    || !/^book-[a-z0-9-]{1,123}$/.test(value.clientBookId)
+    || !validModelText(value.title, 160)
+    || !Array.isArray(value.knowledgePointIds)
+    || value.knowledgePointIds.length < 1
+    || value.knowledgePointIds.length > 100
+    || !value.knowledgePointIds.every(id => typeof id === 'string' && resourceId(id, 'kp'))
+    || new Set(value.knowledgePointIds).size !== value.knowledgePointIds.length
+  ) return undefined
+  return {
+    clientBookId: value.clientBookId,
+    title: value.title,
+    knowledgePointIds: [...value.knowledgePointIds] as string[],
+  }
+}
+
+function parseLearningAttempt(value: unknown, assessmentId: string): LearningAttemptParams | undefined {
+  if (!exactObject(value, ['optionId', 'idempotencyKey'])) return undefined
+  if (
+    typeof value.optionId !== 'string'
+    || !/^opt_[0-9a-f]{20}$/.test(value.optionId)
+    || typeof value.idempotencyKey !== 'string'
+    || !/^idem_[0-9a-f]{20}$/.test(value.idempotencyKey)
+  ) return undefined
+  return { assessmentId, optionId: value.optionId, idempotencyKey: value.idempotencyKey }
 }
 
 function parseKnowledgePointUpdate(value: unknown, knowledgePointId: string): UpdateKnowledgePointParams | undefined {
@@ -335,6 +386,12 @@ export function registerProductRoutes(
       if (route.kind === 'knowledge-point-update' && !resourceId(route.knowledgePointId, 'kp')) {
         return sendError(res, 400, 'REQUEST_INPUT_INVALID')
       }
+      if (route.kind === 'learning-course' && !resourceId(route.courseId, 'course')) {
+        return sendError(res, 400, 'REQUEST_INPUT_INVALID')
+      }
+      if (route.kind === 'learning-attempt' && !resourceId(route.assessmentId, 'asm')) {
+        return sendError(res, 400, 'REQUEST_INPUT_INVALID')
+      }
       const after = route.kind === 'events' && route.queryValid && /^(?:0|[1-9]\d*)$/.test(route.after ?? '')
         ? Number(route.after)
         : undefined
@@ -350,6 +407,12 @@ export function registerProductRoutes(
       const updateParams = route.kind === 'knowledge-point-update'
         ? parseKnowledgePointUpdate(body, route.knowledgePointId)
         : undefined
+      const learningCourseParams = route.kind === 'learning-course-sync'
+        ? parseLearningCourseSync(body)
+        : undefined
+      const learningAttemptParams = route.kind === 'learning-attempt'
+        ? parseLearningAttempt(body, route.assessmentId)
+        : undefined
       if (
         (route.kind === 'preview' && !previewParams)
         || (route.kind === 'import' && !importParams)
@@ -358,6 +421,8 @@ export function registerProductRoutes(
         || (route.kind === 'retry' && !retryParams)
         || (route.kind === 'review' && !reviewParams)
         || (route.kind === 'knowledge-point-update' && !updateParams)
+        || (route.kind === 'learning-course-sync' && !learningCourseParams)
+        || (route.kind === 'learning-attempt' && !learningAttemptParams)
       ) return sendError(res, 400, 'REQUEST_INPUT_INVALID')
 
       if (supervisor.state !== 'READY') return sendError(res, 503, 'CORE_UNAVAILABLE')
@@ -401,7 +466,10 @@ export function registerProductRoutes(
         else if (route.kind === 'candidates') result = await operations.listCandidates(route.runId)
         else if (route.kind === 'review') result = await operations.reviewCandidate(reviewParams as ReviewCandidateParams)
         else if (route.kind === 'knowledge-points') result = await operations.listKnowledgePoints(route.runId)
-        else result = await operations.updateKnowledgePoint(updateParams as UpdateKnowledgePointParams)
+        else if (route.kind === 'knowledge-point-update') result = await operations.updateKnowledgePoint(updateParams as UpdateKnowledgePointParams)
+        else if (route.kind === 'learning-course-sync') result = await operations.syncLearningCourse(learningCourseParams as LearningCourseSyncParams)
+        else if (route.kind === 'learning-course') result = await operations.getLearningCourse(route.courseId)
+        else result = await operations.submitLearningAttempt(learningAttemptParams as LearningAttemptParams)
         if (!res.destroyed && !res.writableEnded) {
           sendJson(res, route.kind === 'import' || route.kind === 'dsh-import' || route.kind === 'retry' ? 202 : 200, { ok: true, result })
         }

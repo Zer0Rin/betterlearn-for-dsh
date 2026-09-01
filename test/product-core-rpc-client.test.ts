@@ -74,6 +74,36 @@ describe('FixedCoreRpcClient', () => {
     await expect(pending).resolves.toEqual({ ...params, deleted: true })
   })
 
+  test('writes the closed learning course and attempt requests', async () => {
+    const { client, input, requests } = pair()
+    const sync = {
+      clientBookId: 'book-nist', title: 'NIST 云计算',
+      knowledgePointIds: ['kp_0123456789abcdefabcd'],
+    }
+    const syncPending = client.syncLearningCourse(sync)
+    const getPending = client.getLearningCourse({ courseId: 'course_0123456789abcdefabcd' })
+    const attempt = {
+      assessmentId: 'asm_0123456789abcdefabcd',
+      optionId: 'opt_0123456789abcdefabcd',
+      idempotencyKey: 'idem_0123456789abcdefabcd',
+    }
+    const attemptPending = client.submitLearningAttempt(attempt)
+
+    expect(requests.map(({ method, params }) => ({ method, params }))).toEqual([
+      { method: 'learning_courses.sync', params: sync },
+      { method: 'learning_courses.get', params: { courseId: 'course_0123456789abcdefabcd' } },
+      { method: 'learning_attempts.submit', params: attempt },
+    ])
+    input.write(result(1, { courseId: 'course_0123456789abcdefabcd' }))
+    input.write(result(2, { courseId: 'course_0123456789abcdefabcd' }))
+    input.write(result(3, { attempt: { correct: true } }))
+    await expect(Promise.all([syncPending, getPending, attemptPending])).resolves.toEqual([
+      { courseId: 'course_0123456789abcdefabcd' },
+      { courseId: 'course_0123456789abcdefabcd' },
+      { attempt: { correct: true } },
+    ])
+  })
+
   test('assembles fragmented UTF-8 and dispatches multiple response frames', async () => {
     const { client, input, requests } = pair()
     const first = client.getRun({ runId: 'job_0123456789abcdefabcd' })

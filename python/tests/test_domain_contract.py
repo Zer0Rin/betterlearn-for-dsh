@@ -53,7 +53,10 @@ def test_ids_are_opaque_and_prefix_checked():
         require_opaque_id("../cand_bad", "cand")
 
 
-@pytest.mark.parametrize("prefix", ["doc", "ck", "job", "att", "cand", "kp", "ev", "cfl"])
+@pytest.mark.parametrize("prefix", [
+    "doc", "ck", "job", "att", "cand", "kp", "ev", "cfl",
+    "course", "unit", "asm", "latt",
+])
 def test_only_resource_id_prefixes_are_generated(prefix: str):
     assert prefix in RESOURCE_ID_PREFIXES
     assert re.fullmatch(rf"{prefix}_[0-9a-f]{{20}}", new_opaque_id(prefix))
@@ -116,6 +119,9 @@ def test_rpc_methods_are_closed():
         "candidates.review": "review_candidate",
         "knowledge_points.list_for_run": "list_knowledge_points",
         "knowledge_points.update": "update_knowledge_point",
+        "learning_courses.sync": "sync_learning_course",
+        "learning_courses.get": "get_learning_course",
+        "learning_attempts.submit": "submit_learning_attempt",
     }
 
 
@@ -160,6 +166,10 @@ def test_public_error_codes_are_closed():
             "EVIDENCE_AMBIGUOUS",
             "CANDIDATE_ALREADY_REVIEWED",
             "IDEMPOTENCY_CONFLICT",
+            "LEARNING_COURSE_NOT_FOUND",
+            "LEARNING_ASSESSMENT_NOT_FOUND",
+            "LEARNING_COURSE_CONFLICT",
+            "LEARNING_STATE_CONFLICT",
             "DATABASE_UNAVAILABLE",
             "TRANSACTION_FAILED",
         }

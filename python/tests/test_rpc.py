@@ -885,6 +885,18 @@ class _MappedCore:
         self.called.append(("delete_run", params))
         return {"runId": params.get("runId"), "deleted": True}
 
+    def sync_learning_course(self, params: object) -> dict[str, object]:
+        self.called.append(("sync_learning_course", params))
+        return {"courseId": "course_0123456789abcdefabcd"}
+
+    def get_learning_course(self, params: object) -> dict[str, object]:
+        self.called.append(("get_learning_course", params))
+        return {"courseId": params.get("courseId")}
+
+    def submit_learning_attempt(self, params: object) -> dict[str, object]:
+        self.called.append(("submit_learning_attempt", params))
+        return {"attempt": {"correct": True}}
+
     def dangerous(self, params: object) -> dict[str, object]:
         raise AssertionError("arbitrary getattr was called")
 
@@ -929,6 +941,40 @@ def test_dispatcher_maps_run_delete() -> None:
         "result": {**params, "deleted": True},
     }
     assert core.called[-1] == ("delete_run", params)
+
+
+@pytest.mark.parametrize(
+    ("method", "target", "params", "result"),
+    (
+        (
+            "learning_courses.sync",
+            "sync_learning_course",
+            {"clientBookId": "book-one", "title": "课程", "knowledgePointIds": ["kp_0123456789abcdefabcd"]},
+            {"courseId": "course_0123456789abcdefabcd"},
+        ),
+        (
+            "learning_courses.get",
+            "get_learning_course",
+            {"courseId": "course_0123456789abcdefabcd"},
+            {"courseId": "course_0123456789abcdefabcd"},
+        ),
+        (
+            "learning_attempts.submit",
+            "submit_learning_attempt",
+            {"assessmentId": "asm_0123456789abcdefabcd", "optionId": "opt_answer", "idempotencyKey": "idem_0123456789abcdefabcd"},
+            {"attempt": {"correct": True}},
+        ),
+    ),
+)
+def test_dispatcher_maps_learning_methods(method, target, params, result) -> None:
+    core = _MappedCore("a" * 64)
+    dispatcher = RpcDispatcher(core)
+    dispatcher.handle(_hello("a" * 64))
+
+    assert dispatcher.handle(_request("learning", method, params)) == {
+        "jsonrpc": "2.0", "id": "learning", "result": result,
+    }
+    assert core.called[-1] == (target, params)
 
 
 def test_response_limit_counts_the_trailing_newline() -> None:

@@ -19,6 +19,11 @@ import type {
   HelloResult,
   ImportAndPrepareParams,
   KnowledgePointList,
+  LearningAttemptParams,
+  LearningAttemptResult,
+  LearningCourseParams,
+  LearningCourseSnapshot,
+  LearningCourseSyncParams,
   PreparedGeneration,
   RetryAndPrepareParams,
   ReviewCandidateParams,
@@ -142,6 +147,24 @@ export class FixedCoreRpcClient {
 
   deleteRun(params: RunParams, signal?: AbortSignal): Promise<RunDeleteResult> {
     return this.#request('runs.delete', params, CORE_WRITE_RPC_TIMEOUT_MS, signal) as Promise<RunDeleteResult>
+  }
+
+  syncLearningCourse(params: LearningCourseSyncParams, signal?: AbortSignal): Promise<LearningCourseSnapshot> {
+    return this.#request(
+      'learning_courses.sync', params, CORE_WRITE_RPC_TIMEOUT_MS, signal,
+    ) as Promise<LearningCourseSnapshot>
+  }
+
+  getLearningCourse(params: LearningCourseParams, signal?: AbortSignal): Promise<LearningCourseSnapshot> {
+    return this.#request(
+      'learning_courses.get', params, CORE_READ_RPC_TIMEOUT_MS, signal,
+    ) as Promise<LearningCourseSnapshot>
+  }
+
+  submitLearningAttempt(params: LearningAttemptParams, signal?: AbortSignal): Promise<LearningAttemptResult> {
+    return this.#request(
+      'learning_attempts.submit', params, CORE_WRITE_RPC_TIMEOUT_MS, signal,
+    ) as Promise<LearningAttemptResult>
   }
 
   close(): void {

@@ -104,6 +104,9 @@ describe('phase1d Client API', () => {
     const candidateId = 'cand_0123456789abcdefabcd'
     const knowledgePointId = 'kp_0123456789abcdefabcd'
     const idempotencyKey = `idem_${'a'.repeat(20)}`
+    const courseId = `course_${'b'.repeat(20)}`
+    const assessmentId = `asm_${'c'.repeat(20)}`
+    const optionId = `opt_${'d'.repeat(20)}`
 
     await (api as unknown as { listRuns(signal?: AbortSignal): Promise<unknown> })
       .listRuns(controller.signal)
@@ -178,6 +181,29 @@ describe('phase1d Client API', () => {
     expect(fetchMock).toHaveBeenLastCalledWith(`/nobei/v1/runs/${runId}`, {
       method: 'DELETE', headers: {}, signal: controller.signal,
     })
+
+    const learning = {
+      clientBookId: 'book-nist', title: 'NIST 云计算', knowledgePointIds: [knowledgePointId],
+    }
+    await api.syncLearningCourse(learning, controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith('/nobei/v1/learning-courses', {
+      method: 'POST', body: JSON.stringify(learning),
+      headers: { 'content-type': 'application/json' }, signal: controller.signal,
+    })
+
+    await api.getLearningCourse(courseId, controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith(`/nobei/v1/learning-courses/${courseId}`, {
+      method: 'GET', headers: {}, signal: controller.signal,
+    })
+
+    await api.submitLearningAttempt(assessmentId, { optionId, idempotencyKey }, controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `/nobei/v1/learning-assessments/${assessmentId}/attempts`,
+      {
+        method: 'POST', body: JSON.stringify({ optionId, idempotencyKey }),
+        headers: { 'content-type': 'application/json' }, signal: controller.signal,
+      },
+    )
   })
 
   test('encodes resource IDs instead of interpolating raw path data', async () => {

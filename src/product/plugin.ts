@@ -157,6 +157,15 @@ export async function applyProductPlugin(
         ? supervisor.withReadyClient((client) => client.deleteRun({ runId }, signal))
         : Promise.reject(new Error('CORE_UNAVAILABLE'))
     },
+    syncLearningCourse: (params, signal) => supervisor
+      ? supervisor.withReadyClient(client => client.syncLearningCourse(params, signal))
+      : Promise.reject(new Error('CORE_UNAVAILABLE')),
+    getLearningCourse: (courseId, signal) => supervisor
+      ? supervisor.withReadyClient(client => client.getLearningCourse({ courseId }, signal))
+      : Promise.reject(new Error('CORE_UNAVAILABLE')),
+    submitLearningAttempt: (params, signal) => supervisor
+      ? supervisor.withReadyClient(client => client.submitLearningAttempt(params, signal))
+      : Promise.reject(new Error('CORE_UNAVAILABLE')),
   }
   const state = {
     get state(): CoreSupervisor['state'] {

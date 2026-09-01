@@ -163,6 +163,11 @@ describe('phase1c product plugin', () => {
     supervisor.withReadyClient.mockImplementation(async (use: (client: { listRuns: typeof listRuns }) => unknown) => use({ listRuns }))
     await operations.listRuns()
     expect(listRuns).toHaveBeenCalledWith(undefined)
+    const syncLearningCourse = vi.fn(async () => ({ courseId: 'course_0123456789abcdefabcd' }))
+    supervisor.withReadyClient.mockImplementation(async (use: (client: { syncLearningCourse: typeof syncLearningCourse }) => unknown) => use({ syncLearningCourse }))
+    const learning = { clientBookId: 'book-one', title: '学习书', knowledgePointIds: ['kp_0123456789abcdefabcd'] }
+    await operations.syncLearningCourse(learning)
+    expect(syncLearningCourse).toHaveBeenCalledWith(learning, undefined)
     const updateKnowledgePoint = vi.fn(async () => ({ knowledgePoint: {} }))
     supervisor.withReadyClient.mockImplementation(async (use: (client: { updateKnowledgePoint: typeof updateKnowledgePoint }) => unknown) => use({ updateKnowledgePoint }))
     const update = { knowledgePointId: 'kp_0123456789abcdefabcd', title: '新标题', statement: '新陈述' }

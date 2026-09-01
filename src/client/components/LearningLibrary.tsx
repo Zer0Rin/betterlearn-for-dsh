@@ -80,10 +80,12 @@ export function LearningBookshelf({
                 <small>学习书</small>
               </span>
               <span className="betterlearn-library__book-copy">
-                <small>{book.points.length} 个知识点 · {book.bookId === newBookId ? '刚刚创建' : '尚未开始'}</small>
+                <small>{book.points.length} 个知识点 · {book.bookId === newBookId ? '刚刚创建'
+                  : book.progress ? `已完成 ${book.progress.completed}/${book.progress.total} · 掌握度 ${book.progress.mastery}%`
+                    : '尚未开始'}</small>
                 <strong>{book.title}</strong>
-                <span>{book.course.units.slice(0, 3).map(unit => unit.title).join(' · ')}</span>
-                <em>打开学习书 →</em>
+                <span>{book.points.slice(0, 3).map(point => point.title).join(' · ')}</span>
+                <em>{book.progress ? '继续学习 →' : '开始学习 →'}</em>
               </span>
             </button>
           ))}

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   LEARNING_BOOK_STORAGE_KEY,
   createLearningBook,
+  updateLearningBookCourse,
   readLearningBooks,
   writeLearningBooks,
 } from '../src/client/learning-book-library.js'
@@ -32,35 +33,54 @@ describe('learning book library', () => {
       { bookId: 'book-2', createdAt: '2026-09-01T10:01:00.000Z' })
 
     expect(first.bookId).not.toBe(second.bookId)
-    expect(first.course.courseId).toBe('book-1')
-    expect(first.course.title).toBe('闭包训练')
-    expect(second.course.courseId).toBe('book-2')
-    expect(second.course.title).toBe('闭包训练 2')
+    expect(first).not.toHaveProperty('course')
+    expect(first.courseId).toBeUndefined()
+    expect(second.courseId).toBeUndefined()
   })
 
-  test('round trips ordered books and rebuilds their derived courses', () => {
+  test('round trips ordered books and caches only Core progress projection', () => {
     const storage = new MemoryStorage()
     const first = createLearningBook({ title: '第一本', points: [point], sourceText: '正文一' },
       { bookId: 'book-1', createdAt: '2026-09-01T10:00:00.000Z' })
     const second = createLearningBook({ title: '第二本', points: [point], sourceText: '正文二' },
       { bookId: 'book-2', createdAt: '2026-09-01T10:01:00.000Z' })
 
-    expect(writeLearningBooks(storage, [second, first])).toBe(true)
-    expect(JSON.parse(storage.getItem(LEARNING_BOOK_STORAGE_KEY)!)).toMatchObject({ version: 1 })
-    expect(readLearningBooks(storage)).toEqual([second, first])
+    const learned = updateLearningBookCourse(second, {
+      courseId: 'course_0123456789abcdefabcd', clientBookId: second.bookId,
+      title: second.title, status: 'active', progress: { completed: 1, total: 1, mastery: 70 }, units: [],
+    })
+    expect(writeLearningBooks(storage, [learned, first])).toBe(true)
+    expect(JSON.parse(storage.getItem(LEARNING_BOOK_STORAGE_KEY)!)).toMatchObject({ version: 2 })
+    expect(readLearningBooks(storage)).toEqual([learned, first])
   })
 
   test('rejects malformed, unknown-version, and extra-field storage payloads', () => {
     const storage = new MemoryStorage()
     for (const raw of [
       '{',
-      JSON.stringify({ version: 2, books: [] }),
+      JSON.stringify({ version: 3, books: [] }),
       JSON.stringify({ version: 1, books: [], extra: true }),
       JSON.stringify({ version: 1, books: [{ bookId: 'x' }] }),
     ]) {
       storage.setItem(LEARNING_BOOK_STORAGE_KEY, raw)
       expect(readLearningBooks(storage)).toEqual([])
     }
+  })
+
+  test('reads existing version-one books without inventing course state', () => {
+    const storage = new MemoryStorage()
+    storage.setItem(LEARNING_BOOK_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      books: [{
+        bookId: 'book-legacy', title: '旧学习书', createdAt: '2026-09-01T10:00:00.000Z',
+        sourceText: '正文', points: [point],
+      }],
+    }))
+
+    const [legacy] = readLearningBooks(storage)
+    expect(legacy).toMatchObject({ bookId: 'book-legacy', title: '旧学习书' })
+    expect(legacy).not.toHaveProperty('courseId')
+    expect(legacy).not.toHaveProperty('progress')
   })
 
   test('reports blocked local storage without throwing', () => {

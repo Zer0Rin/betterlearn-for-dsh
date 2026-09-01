@@ -12,14 +12,13 @@ import {
 } from './components/LearningLibrary.js'
 import { LearningSpace } from './components/LearningSpace.js'
 import {
-  createLearningBook, readLearningBooks, writeLearningBooks, type LearningBook,
+  createLearningBook, readLearningBooks, updateLearningBookCourse, writeLearningBooks, type LearningBook,
 } from './learning-book-library.js'
 import { readLearningLayout, writeLearningLayout } from './learning-layout.js'
-import type { LearningPreviewCourse } from './learning-preview.js'
 import { NobeiWorkspace } from './NobeiClientView.js'
 import { modelSelectionInjection, type ModelDirectoryResolverPort } from './model-directory-bridge.js'
 import { ensureClientStyles } from './styles.js'
-import type { ClientApi, KnowledgePointSnapshot } from './types.js'
+import type { ClientApi, KnowledgePointSnapshot, LearningCourse } from './types.js'
 import type { WorkspaceScreen } from './use-nobei-workspace.js'
 import { selectableDshConversations, type DshConversationSummary } from './dsh-conversation-sessions.js'
 import {
@@ -125,7 +124,7 @@ export function BetterLearnFloatingApp({
   ))
   const [mode, setMode] = useState<FloatingMode>('workbench')
   const [area, setArea] = useState<WorkbenchArea>('home')
-  const [previewCourse, setPreviewCourse] = useState<LearningPreviewCourse>()
+  const [activeBook, setActiveBook] = useState<LearningBook>()
   const [learningBooks, setLearningBooks] = useState<LearningBook[]>(
     () => readLearningBooks(persistentSizeStorage),
   )
@@ -221,7 +220,7 @@ export function BetterLearnFloatingApp({
           setSize(next)
           setMode('workbench')
           setArea('library')
-          setPreviewCourse(undefined)
+          setActiveBook(undefined)
         }
         setHistoryOpen(false)
         setExpanded(false)
@@ -273,7 +272,7 @@ export function BetterLearnFloatingApp({
     const next = clampWorkbenchSize({ width: 1080, height: viewport.height - 32 }, viewport)
     sizeRef.current = next
     setSize(next)
-    setPreviewCourse(book.course)
+    setActiveBook(book)
     setHistoryOpen(false)
     setMode('learning')
   }
@@ -286,7 +285,20 @@ export function BetterLearnFloatingApp({
     setSize(next)
     setMode('workbench')
     setArea('library')
-    setPreviewCourse(undefined)
+    setActiveBook(undefined)
+  }
+
+  function updateCourse(course: LearningCourse): void {
+    setLearningBooks(current => {
+      const next = current.map(book => book.bookId === course.clientBookId
+        ? updateLearningBookCourse(book, course)
+        : book)
+      writeLearningBooks(persistentSizeStorage, next)
+      return next
+    })
+    setActiveBook(current => current?.bookId === course.clientBookId
+      ? updateLearningBookCourse(current, course)
+      : current)
   }
 
   function openArea(next: WorkbenchArea): void {
@@ -356,11 +368,12 @@ export function BetterLearnFloatingApp({
       ? <LearningBookComposer points={bookDraft.points} onCreate={finishLearningBook}
         onCancel={() => { setBookDraft(undefined); openArea('knowledge') }} />
       : null}
-    {mode === 'learning' && previewCourse !== undefined
-      ? <LearningSpace course={previewCourse} sourceText={previewCourse.sourceText}
+    {mode === 'learning' && activeBook !== undefined
+      ? <LearningSpace book={activeBook} api={clientApi}
         leftOpen={learningLayout.leftOpen} rightOpen={learningLayout.rightOpen}
         onLeftOpenChange={open => updateLearningLayout('leftOpen', open)}
         onRightOpenChange={open => updateLearningLayout('rightOpen', open)}
+        onCourseChange={updateCourse}
         onExit={exitLearning} />
       : null}
     {sessionId !== undefined

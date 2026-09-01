@@ -35,6 +35,7 @@ from nobei_core.ids import (
     require_idempotency_key,
     require_opaque_id,
 )
+from nobei_core.learning import course_snapshot, submit_attempt, sync_course
 from nobei_core.repository import (
     append_event,
     candidate_evidence,
@@ -1185,6 +1186,21 @@ class Phase1Core:
                 ),
                 "run": _run_snapshot(con, updated_run, self._contract),
             }
+
+    def sync_learning_course(self, params: object) -> dict[str, object]:
+        with _transactional_write(self._database, "learning course sync failed") as con:
+            course_id = sync_course(con, params)
+            return course_snapshot(con, course_id)
+
+    def get_learning_course(self, params: object) -> dict[str, object]:
+        command = _require_params(params, frozenset({"courseId"}))
+        course_id = require_opaque_id(command["courseId"], "course")
+        with self._database.read_snapshot() as con:
+            return course_snapshot(con, course_id)
+
+    def submit_learning_attempt(self, params: object) -> dict[str, object]:
+        with _transactional_write(self._database, "learning attempt failed") as con:
+            return submit_attempt(con, params)
 
 
 def _create_import_in_transaction(con, contract, *, filename, media_type, canonical, encoded):

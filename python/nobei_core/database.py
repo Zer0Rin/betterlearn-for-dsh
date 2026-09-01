@@ -20,7 +20,11 @@ from nobei_core.repository import recover_interrupted_runs
 _PRAGMA_NAME = re.compile(r"[a-z_]+\Z")
 _NOFOLLOW = os.O_NOFOLLOW
 _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
-PRODUCT_TABLES = frozenset({"schema_meta", "documents", "runs", "generation_attempts", "candidates", "candidate_evidence", "candidate_reviews", "knowledge_points", "knowledge_point_evidence", "run_events", "idempotency_records"})
+PRODUCT_TABLES_V1 = frozenset({"schema_meta", "documents", "runs", "generation_attempts", "candidates", "candidate_evidence", "candidate_reviews", "knowledge_points", "knowledge_point_evidence", "run_events", "idempotency_records"})
+PRODUCT_TABLES = PRODUCT_TABLES_V1 | frozenset({
+    "learning_courses", "learning_units", "learning_assessments",
+    "learning_attempts", "learning_mastery_states",
+})
 
 
 def assert_schema(connection: sqlite3.Connection) -> None:
@@ -29,21 +33,43 @@ def assert_schema(connection: sqlite3.Connection) -> None:
         raise _unavailable("Unsupported database schema. Back up existing data and choose a new empty data directory; automatic migration or deletion is not supported.")
     try:
         version = connection.execute("SELECT id,version FROM schema_meta").fetchall()
-        if [tuple(r) for r in version] != [(1, 1)]:
+        if [tuple(r) for r in version] != [(1, 2)]:
             raise _unavailable("Unsupported BetterLearn product schema version")
     except sqlite3.Error as exc:
         raise _unavailable("Unsupported BetterLearn product schema") from exc
 
 
+def _schema_version(connection: sqlite3.Connection) -> int | None:
+    try:
+        rows = connection.execute("SELECT id,version FROM schema_meta").fetchall()
+    except sqlite3.Error:
+        return None
+    if len(rows) != 1 or tuple(rows[0]) not in ((1, 1), (1, 2)):
+        return None
+    return int(rows[0][1])
+
+
+def _apply_script(connection: sqlite3.Connection, script_path: Path) -> None:
+    try:
+        connection.executescript(
+            "BEGIN IMMEDIATE;\n" + script_path.read_text(encoding="utf-8") + "\nCOMMIT;"
+        )
+    except BaseException:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+
+
 def apply_product_schema(connection: sqlite3.Connection, schema_path: Path) -> None:
     existing = connection.execute("SELECT 1 FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' LIMIT 1").fetchone()
     if existing is None:
-        try:
-            connection.executescript("BEGIN IMMEDIATE;\n" + schema_path.read_text(encoding="utf-8") + "\nCOMMIT;")
-        except BaseException:
-            if connection.in_transaction:
-                connection.execute("ROLLBACK")
-            raise
+        _apply_script(connection, schema_path)
+    tables = {r[0] for r in connection.execute(
+        "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    )}
+    version = _schema_version(connection)
+    if tables == PRODUCT_TABLES_V1 and version == 1:
+        _apply_script(connection, schema_path.with_name("002_learning.sql"))
     assert_schema(connection)
 
 

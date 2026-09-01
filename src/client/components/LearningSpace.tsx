@@ -1,33 +1,48 @@
-import { useMemo, useState } from 'react'
-import {
-  gradeLearningPreview,
-  type LearningPreviewCourse,
-  type LearningPreviewOption,
-  type LearningPreviewUnit,
-} from '../learning-preview.js'
-
-interface LearningAttemptPreview {
-  selected?: string
-  result?: 'correct' | 'incorrect'
-  retestSelected?: string
-  retestPassed?: boolean
-}
+import { useEffect, useMemo, useState } from 'react'
+import type { LearningBook } from '../learning-book-library.js'
+import type {
+  ClientApi, LearningAssessment, LearningCourse, LearningOption, LearningUnit,
+} from '../types.js'
 
 export interface LearningSpaceProps {
-  course: LearningPreviewCourse
-  sourceText: string
+  book: LearningBook
+  api: Pick<ClientApi, 'syncLearningCourse' | 'submitLearningAttempt'>
   leftOpen: boolean
   rightOpen: boolean
   onLeftOpenChange(open: boolean): void
   onRightOpenChange(open: boolean): void
+  onCourseChange(course: LearningCourse): void
   onExit(): void
 }
 
+const STATUS_LABELS: Record<LearningUnit['mastery']['status'], string> = {
+  new: '尚未检测',
+  remediation_required: '需要补救',
+  learning: '继续练习',
+  mastered: '已掌握',
+  mastered_after_remediation: '补救后掌握',
+}
+
+function idempotencyKey(): string {
+  const bytes = new Uint8Array(10)
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes)
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256)
+    }
+  }
+  return `idem_${[...bytes].map(value => value.toString(16).padStart(2, '0')).join('')}`
+}
+
 function UnitPath({ course, activeUnitId, onSelect }: {
-  course: LearningPreviewCourse
+  course: LearningCourse
   activeUnitId: string | undefined
   onSelect(unitId: string): void
 }) {
+  const now = Date.now()
+  const due = course.units.filter(unit => unit.mastery.dueAt !== null
+    && Date.parse(unit.mastery.dueAt) <= now).length
   return (
     <nav className="betterlearn-learning__path" data-testid="learning-path" aria-label="课程路径">
       <div className="betterlearn-learning__path-heading">
@@ -36,34 +51,40 @@ function UnitPath({ course, activeUnitId, onSelect }: {
         <p>{course.units.length} 个学习单元</p>
       </div>
       <ol>
-        {course.units.map((unit, index) => (
-          <li key={unit.unitId} data-delivery={unit.delivery}>
-            <button type="button" data-unit-id={unit.unitId}
-              aria-current={unit.unitId === activeUnitId ? 'step' : undefined}
-              onClick={() => onSelect(unit.unitId)}>
-              <span>{String(index + 1).padStart(2, '0')}</span>
-              <span><strong>{unit.title}</strong><small>{unit.objective}</small></span>
-            </button>
-          </li>
-        ))}
+        {course.units.map((unit, index) => {
+          const completed = unit.mastery.status === 'mastered'
+            || unit.mastery.status === 'mastered_after_remediation'
+          return (
+            <li key={unit.unitId} data-delivery={completed ? 'completed'
+              : unit.unitId === activeUnitId ? 'current' : 'upcoming'}>
+              <button type="button" data-unit-id={unit.unitId}
+                aria-current={unit.unitId === activeUnitId ? 'step' : undefined}
+                onClick={() => onSelect(unit.unitId)}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <span><strong>{unit.title}</strong><small>{STATUS_LABELS[unit.mastery.status]} · {unit.mastery.strength}%</small></span>
+              </button>
+            </li>
+          )
+        })}
       </ol>
       <div className="betterlearn-learning__today">
         <span>今日复习</span>
-        <strong>预览中暂无到期目标</strong>
+        <strong>{due > 0 ? `${due} 个目标已到期` : '当前没有到期目标'}</strong>
       </div>
     </nav>
   )
 }
 
-function Options({ options, selected, onSelect }: {
-  options: LearningPreviewOption[]
+function Options({ options, selected, disabled, onSelect }: {
+  options: LearningOption[]
   selected: string | undefined
+  disabled?: boolean
   onSelect(optionId: string): void
 }) {
   return (
     <div className="betterlearn-learning__options" role="radiogroup">
       {options.map((option, index) => (
-        <button key={option.optionId} type="button" role="radio"
+        <button key={option.optionId} type="button" role="radio" disabled={disabled}
           data-option-id={option.optionId} aria-checked={selected === option.optionId}
           onClick={() => onSelect(option.optionId)}>
           <span>{String.fromCharCode(65 + index)}</span><span>{option.label}</span>
@@ -73,69 +94,73 @@ function Options({ options, selected, onSelect }: {
   )
 }
 
-function KnowledgeCheck({ unit, attempt, onChange }: {
-  unit: LearningPreviewUnit
-  attempt: LearningAttemptPreview
-  onChange(next: LearningAttemptPreview): void
+function KnowledgeCheck({ unit, selected, submittingId, error, onSelect, onSubmit }: {
+  unit: LearningUnit
+  selected: Record<string, string>
+  submittingId?: string
+  error?: string
+  onSelect(assessmentId: string, optionId: string): void
+  onSubmit(assessment: LearningAssessment): void
 }) {
-  const submit = () => {
-    if (attempt.selected === undefined) return
-    onChange({
-      ...attempt,
-      result: gradeLearningPreview(unit.check.questionId, attempt.selected) ? 'correct' : 'incorrect',
-    })
-  }
-  const submitRetest = () => {
-    if (attempt.retestSelected === undefined) return
-    onChange({
-      ...attempt,
-      retestPassed: gradeLearningPreview(unit.check.retest.questionId, attempt.retestSelected),
-    })
-  }
+  const main = unit.check.main
+  const retest = unit.check.retest
+  const mainSelection = selected[main.assessmentId] ?? main.attempt?.selectedOptionId
+  const retestSelection = selected[retest.assessmentId] ?? retest.attempt?.selectedOptionId
+  const needsRemediation = main.attempt?.correct === false
+    || unit.mastery.status === 'remediation_required'
+    || unit.mastery.status === 'learning'
+    || unit.mastery.status === 'mastered_after_remediation'
   return (
     <section className="betterlearn-learning__check" aria-labelledby={`check-${unit.unitId}`}>
-      <div className="betterlearn-learning__section-label"><span>理解检测</span><em>交互预览</em></div>
-      <h3 id={`check-${unit.unitId}`}>{unit.check.prompt}</h3>
-      <Options options={unit.check.options} selected={attempt.selected}
-        onSelect={selected => onChange({ ...attempt, selected, result: undefined })} />
+      <div className="betterlearn-learning__section-label"><span>理解检测</span><em>陈述辨析 · Core 判分</em></div>
+      <h3 id={`check-${unit.unitId}`}>{main.prompt}</h3>
+      <Options options={main.options} selected={mainSelection} disabled={main.attempt !== null}
+        onSelect={optionId => onSelect(main.assessmentId, optionId)} />
       <button className="betterlearn-learning__primary" data-testid="learning-submit-check"
-        type="button" disabled={attempt.selected === undefined} onClick={submit}>提交答案</button>
-      {attempt.result === 'correct' && (
+        type="button" disabled={mainSelection === undefined || main.attempt !== null || submittingId !== undefined}
+        onClick={() => onSubmit(main)}>{submittingId === main.assessmentId ? '正在判分…' : main.attempt ? '已提交' : '提交答案'}</button>
+      {main.attempt?.correct === true && (
         <div className="betterlearn-learning__passed" data-testid="learning-passed">
-          <strong>检测通过</strong><span>你把结论和证据联系起来了。</span>
+          <strong>检测通过</strong><span>你识别出了“{unit.title}”的准确陈述，掌握记录已保存。</span>
         </div>
       )}
-      {attempt.result === 'incorrect' && (
+      {needsRemediation && (
         <div className="betterlearn-learning__remediation" data-testid="learning-remediation">
-          <p className="betterlearn-learning__kicker">先回到证据</p>
-          <h4>补上“结论从哪里来”这一步</h4>
-          <p>{unit.check.remediation}</p>
+          <p className="betterlearn-learning__kicker">根据本题结果补救</p>
+          <h4>{unit.check.remediation.title}</h4>
+          <p>{unit.check.remediation.body}</p>
           <div className="betterlearn-learning__retest">
-            <div className="betterlearn-learning__section-label"><span>变式复测</span><em>不重复原题</em></div>
-            <h4>{unit.check.retest.prompt}</h4>
-            <Options options={unit.check.retest.options} selected={attempt.retestSelected}
-              onSelect={retestSelected => onChange({ ...attempt, retestSelected, retestPassed: undefined })} />
+            <div className="betterlearn-learning__section-label"><span>证据复测</span><em>定位真实原文</em></div>
+            <h4>{retest.prompt}</h4>
+            <Options options={retest.options} selected={retestSelection}
+              disabled={retest.attempt?.correct === true}
+              onSelect={optionId => onSelect(retest.assessmentId, optionId)} />
             <button className="betterlearn-learning__primary" data-testid="learning-submit-retest"
-              type="button" disabled={attempt.retestSelected === undefined} onClick={submitRetest}>提交复测</button>
-            {attempt.retestPassed === true && (
-              <div className="betterlearn-learning__passed" data-testid="learning-passed">
-                <strong>复测通过</strong><span>这个目标在正式版本中会进入掌握记录。</span>
+              type="button" disabled={retestSelection === undefined || retest.attempt?.correct === true || submittingId !== undefined}
+              onClick={() => onSubmit(retest)}>{submittingId === retest.assessmentId ? '正在判分…' : '提交复测'}</button>
+            {retest.attempt?.correct === true && (
+              <div className="betterlearn-learning__passed" data-testid="learning-retest-passed">
+                <strong>复测通过</strong><span>结论与原文证据已经对应，掌握度和复习时间已更新。</span>
               </div>
             )}
-            {attempt.retestPassed === false && (
-              <p className="betterlearn-learning__retry">还差一步：关键词相同不等于证据关系相同。</p>
+            {retest.attempt?.correct === false && (
+              <p className="betterlearn-learning__retry">这段引文支持的是另一个知识点。重新比较结论的对象与关系后再试一次。</p>
             )}
           </div>
         </div>
       )}
+      {error && <p className="betterlearn-learning__operation-error" role="alert">{error}</p>}
     </section>
   )
 }
 
-function Lesson({ unit, attempt, onAttemptChange }: {
-  unit: LearningPreviewUnit
-  attempt: LearningAttemptPreview
-  onAttemptChange(next: LearningAttemptPreview): void
+function Lesson({ unit, selected, submittingId, error, onSelect, onSubmit }: {
+  unit: LearningUnit
+  selected: Record<string, string>
+  submittingId?: string
+  error?: string
+  onSelect(assessmentId: string, optionId: string): void
+  onSubmit(assessment: LearningAssessment): void
 }) {
   return (
     <main className="betterlearn-learning__lesson" data-testid="learning-lesson">
@@ -144,7 +169,7 @@ function Lesson({ unit, attempt, onAttemptChange }: {
           <p className="betterlearn-learning__kicker">当前单元 · {unit.type}</p>
           <h1>{unit.title}</h1>
         </div>
-        <span className="betterlearn-learning__preview-chip">交互预览 · 数据不会保存</span>
+        <span className="betterlearn-learning__preview-chip">学习记录已保存</span>
       </header>
       <section className="betterlearn-learning__objective">
         <span>本单元目标</span><strong>{unit.objective}</strong>
@@ -154,18 +179,24 @@ function Lesson({ unit, attempt, onAttemptChange }: {
         <p>{unit.lesson.explanation}</p>
       </section>
       <section className="betterlearn-learning__worked-example">
-        <div className="betterlearn-learning__section-label"><span>证据练习</span><em>先定位，再解释</em></div>
+        <div className="betterlearn-learning__section-label"><span>证据练习</span><em>结论对应原文</em></div>
         <p>{unit.lesson.workedExample}</p>
       </section>
       <aside className="betterlearn-learning__supplement">
-        <span>辅助解释</span><p>{unit.lesson.supplemental.replace(/^辅助解释：/, '')}</p>
+        <span>学习提示</span><p>{unit.lesson.supplemental}</p>
       </aside>
-      <KnowledgeCheck unit={unit} attempt={attempt} onChange={onAttemptChange} />
+      <KnowledgeCheck unit={unit} selected={selected} submittingId={submittingId} error={error}
+        onSelect={onSelect} onSubmit={onSubmit} />
     </main>
   )
 }
 
-function EvidencePanel({ unit, sourceText }: { unit: LearningPreviewUnit; sourceText: string }) {
+function dueLabel(value: string | null): string {
+  if (value === null) return '—'
+  return new Date(value).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+}
+
+function EvidencePanel({ unit, sourceText }: { unit: LearningUnit; sourceText: string }) {
   return (
     <aside className="betterlearn-learning__evidence" data-testid="learning-evidence" aria-label="证据与掌握状态">
       <section>
@@ -181,11 +212,11 @@ function EvidencePanel({ unit, sourceText }: { unit: LearningPreviewUnit; source
         <small>当前材料 · {sourceText.length.toLocaleString()} 字符</small>
       </section>
       <section className="betterlearn-learning__mastery">
-        <div className="betterlearn-learning__section-label"><span>学习状态</span><em>预览</em></div>
-        <div className="betterlearn-learning__mastery-ring"><strong>0%</strong><span>尚未记录</span></div>
+        <div className="betterlearn-learning__section-label"><span>学习状态</span><em>{STATUS_LABELS[unit.mastery.status]}</em></div>
+        <div className="betterlearn-learning__mastery-ring"><strong>{unit.mastery.strength}%</strong><span>{STATUS_LABELS[unit.mastery.status]}</span></div>
         <dl>
           <div><dt>核心目标</dt><dd>1</dd></div>
-          <div><dt>复习到期</dt><dd>—</dd></div>
+          <div><dt>复习到期</dt><dd>{dueLabel(unit.mastery.dueAt)}</dd></div>
           <div><dt>证据锚点</dt><dd>{unit.evidence.kind === 'quote' ? 1 : 0}</dd></div>
         </dl>
       </section>
@@ -194,16 +225,77 @@ function EvidencePanel({ unit, sourceText }: { unit: LearningPreviewUnit; source
 }
 
 export function LearningSpace({
-  course, sourceText, leftOpen, rightOpen,
-  onLeftOpenChange, onRightOpenChange, onExit,
+  book, api, leftOpen, rightOpen,
+  onLeftOpenChange, onRightOpenChange, onCourseChange, onExit,
 }: LearningSpaceProps) {
-  const [activeUnitId, setActiveUnitId] = useState(course.units[0]?.unitId)
-  const [attempts, setAttempts] = useState<Record<string, LearningAttemptPreview>>({})
+  const [course, setCourse] = useState<LearningCourse>()
+  const [loadingError, setLoadingError] = useState<string>()
+  const [reload, setReload] = useState(0)
+  const [activeUnitId, setActiveUnitId] = useState<string>()
+  const [selected, setSelected] = useState<Record<string, string>>({})
+  const [submittingId, setSubmittingId] = useState<string>()
+  const [operationError, setOperationError] = useState<string>()
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setLoadingError(undefined)
+    api.syncLearningCourse({
+      clientBookId: book.bookId,
+      title: book.title,
+      knowledgePointIds: book.points.map(point => point.knowledgePointId),
+    }, controller.signal).then(next => {
+      if (controller.signal.aborted) return
+      setCourse(next)
+      setActiveUnitId(current => current ?? next.units[0]?.unitId)
+      onCourseChange(next)
+    }).catch(error => {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        setLoadingError('学习内容加载失败，请重试。')
+      }
+    })
+    return () => controller.abort()
+  }, [api, book.bookId, book.title, reload])
+
   const activeUnit = useMemo(
-    () => course.units.find(unit => unit.unitId === activeUnitId) ?? course.units[0],
-    [activeUnitId, course.units],
+    () => course?.units.find(unit => unit.unitId === activeUnitId) ?? course?.units[0],
+    [activeUnitId, course],
   )
-  const attempt = activeUnit === undefined ? {} : attempts[activeUnit.unitId] ?? {}
+
+  const submit = async (assessment: LearningAssessment) => {
+    const optionId = selected[assessment.assessmentId] ?? assessment.attempt?.selectedOptionId
+    if (optionId === undefined || submittingId !== undefined) return
+    setSubmittingId(assessment.assessmentId)
+    setOperationError(undefined)
+    try {
+      const result = await api.submitLearningAttempt(assessment.assessmentId, {
+        optionId,
+        idempotencyKey: idempotencyKey(),
+      })
+      setCourse(result.course)
+      onCourseChange(result.course)
+    } catch {
+      setOperationError('答案没有保存成功，请重新提交。')
+    } finally {
+      setSubmittingId(undefined)
+    }
+  }
+
+  if (course === undefined) {
+    return (
+      <section className="betterlearn-learning" data-left-open={leftOpen ? 'true' : 'false'}
+        data-right-open={rightOpen ? 'true' : 'false'}>
+        <header className="betterlearn-learning__toolbar">
+          <p><span>{book.title}</span><strong>准备学习内容</strong></p>
+          <button type="button" aria-label="返回学习书架" onClick={onExit}>返回</button>
+        </header>
+        <main className="betterlearn-learning__loading" data-testid={loadingError ? 'learning-load-error' : 'learning-loading'}>
+          {loadingError ? <><h2>{loadingError}</h2><button type="button" onClick={() => setReload(value => value + 1)}>重新加载</button></>
+            : <><span className="betterlearn-learning__loading-dot" /><h2>正在从已确认知识点编译学习单元…</h2><p>题目、作答和掌握度会保存到 BetterLearn。</p></>}
+        </main>
+      </section>
+    )
+  }
+
   return (
     <section className="betterlearn-learning" data-left-open={leftOpen ? 'true' : 'false'}
       data-right-open={rightOpen ? 'true' : 'false'}>
@@ -214,18 +306,20 @@ export function LearningSpace({
           <button type="button" aria-label={rightOpen ? '收起证据与掌握状态' : '展开证据与掌握状态'}
             aria-expanded={rightOpen} onClick={() => onRightOpenChange(!rightOpen)}>证据</button>
         </div>
-        <p><span>学习进度</span><strong>{course.progress.completed} / {course.progress.total}</strong></p>
+        <p><span>学习进度</span><strong>{course.progress.completed} / {course.progress.total} · {course.progress.mastery}%</strong></p>
         <button type="button" aria-label="返回学习书架" onClick={onExit}>返回</button>
       </header>
       <div className="betterlearn-learning__body">
         {leftOpen && <UnitPath course={course} activeUnitId={activeUnit?.unitId} onSelect={setActiveUnitId} />}
         {activeUnit === undefined ? (
-          <main className="betterlearn-learning__empty">没有可预览的知识点。</main>
+          <main className="betterlearn-learning__empty">这本学习书没有可学习的单元。</main>
         ) : (
-          <Lesson unit={activeUnit} attempt={attempt}
-            onAttemptChange={next => setAttempts(current => ({ ...current, [activeUnit.unitId]: next }))} />
+          <Lesson unit={activeUnit} selected={selected} submittingId={submittingId}
+            error={operationError}
+            onSelect={(assessmentId, optionId) => setSelected(current => ({ ...current, [assessmentId]: optionId }))}
+            onSubmit={submit} />
         )}
-        {rightOpen && activeUnit !== undefined && <EvidencePanel unit={activeUnit} sourceText={sourceText} />}
+        {rightOpen && activeUnit !== undefined && <EvidencePanel unit={activeUnit} sourceText={book.sourceText} />}
       </div>
     </section>
   )

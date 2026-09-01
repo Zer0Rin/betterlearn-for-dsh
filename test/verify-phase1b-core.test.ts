@@ -7,10 +7,14 @@ import {
 
 describe('product schema package verification', () => {
   test('accepts only the product schema source assets', async () => {
-    await expect(assertProductSchemaAssets()).resolves.toEqual({ schema: '001_product.sql' })
+    await expect(assertProductSchemaAssets()).resolves.toEqual({
+      schemas: ['001_product.sql', '002_learning.sql'],
+    })
   })
 
   test('includes the product schema in the published tarball', async () => {
-    await expect(verifyProductSchemaPackage()).resolves.toMatchObject({ schema: '001_product.sql' })
+    await expect(verifyProductSchemaPackage()).resolves.toMatchObject({
+      schemas: ['001_product.sql', '002_learning.sql'],
+    })
   })
 })

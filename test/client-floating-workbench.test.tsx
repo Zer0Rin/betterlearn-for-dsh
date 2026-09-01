@@ -340,6 +340,28 @@ describe('BetterLearn floating workbench shell', () => {
       listEvents: vi.fn(async (_runId: string, after: number) => ({ events: [], nextAfter: after })),
       listCandidates: vi.fn(async () => ({ candidates: [] })),
       listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [point] })),
+      syncLearningCourse: vi.fn(async (input: { clientBookId: string; title: string }) => ({
+        courseId: 'course_0123456789abcdefabcd', clientBookId: input.clientBookId,
+        title: input.title, status: 'active', progress: { completed: 0, total: 1, mastery: 0 },
+        units: [{
+          unitId: 'unit_0123456789abcdefabcd', knowledgePointId: point.knowledgePointId,
+          type: point.type, title: point.title,
+          objective: '能够准确解释闭包，并从原文中定位支持证据。',
+          lesson: { explanation: point.statement, workedExample: '原文支持闭包结论。', supplemental: '核对定义和边界。' },
+          evidence: { kind: 'quote', ...point.evidence[0] },
+          mastery: { status: 'new', strength: 0, dueAt: null },
+          check: {
+            main: { assessmentId: 'asm_0123456789abcdefabcd', kind: 'claim_choice',
+              prompt: '以下哪一项准确说明“闭包”？',
+              options: [{ optionId: 'opt_0123456789abcdefabcd', label: point.statement }], attempt: null },
+            remediation: { title: '重新核对“闭包”', body: '回到原文证据。' },
+            retest: { assessmentId: 'asm_abcdefabcdefabcdefabcd', kind: 'evidence_choice',
+              prompt: '哪段原文支持闭包？',
+              options: [{ optionId: 'opt_abcdefabcdefabcdefabcd', label: point.evidence[0]!.quote }], attempt: null },
+          },
+        }],
+      })),
+      submitLearningAttempt: vi.fn(),
     } as unknown as ClientApi
     const source = sessionSource('session-a')
 
@@ -373,7 +395,8 @@ describe('BetterLearn floating workbench shell', () => {
 
     const newBook = renderer.root.findByProps({ 'data-new': 'true' })
     expect(JSON.stringify(renderer.toJSON())).toContain('闭包入门')
-    act(() => newBook.props.onClick())
+    await act(async () => newBook.props.onClick())
+    await vi.waitFor(() => expect(renderer.root.findByProps({ 'data-testid': 'learning-lesson' })).toBeDefined())
     panel = renderer.root.findByProps({ 'data-testid': 'betterlearn-floating-panel' })
     expect(panel.props['data-mode']).toBe('learning')
     expect(panel.props.style).toMatchObject({

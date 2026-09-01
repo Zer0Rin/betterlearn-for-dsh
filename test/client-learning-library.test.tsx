@@ -60,6 +60,20 @@ describe('BetterLearn primary entrances and learning bookshelf', () => {
     expect(onOpenKnowledge).toHaveBeenCalledTimes(1)
   })
 
+  test('shows persisted completion and mastery on the bookshelf', () => {
+    const book = {
+      ...createLearningBook({ title: '闭包学习书', points: [point], sourceText: '正文' },
+        { bookId: 'book-progress', createdAt: '2026-09-01T10:00:00.000Z' }),
+      courseId: 'course_0123456789abcdefabcd',
+      progress: { completed: 1, total: 2, mastery: 35 },
+    }
+    const renderer = create(<LearningBookshelf books={[book]} onOpenBook={vi.fn()}
+      onOpenKnowledge={vi.fn()} />)
+
+    expect(JSON.stringify(renderer.toJSON())).toContain('已完成 1/2 · 掌握度 35%')
+    expect(JSON.stringify(renderer.toJSON())).toContain('继续学习')
+  })
+
   test('edits the title and moves points before creating a draft', () => {
     const onCreate = vi.fn()
     const renderer = create(<LearningBookComposer points={[point, second]}

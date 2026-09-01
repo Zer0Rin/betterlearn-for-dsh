@@ -15,6 +15,9 @@ const runId = `job_${'a'.repeat(20)}`
 const candidateId = `cand_${'b'.repeat(20)}`
 const knowledgePointId = `kp_${'c'.repeat(20)}`
 const idempotencyKey = `idem_${'c'.repeat(20)}`
+const courseId = `course_${'d'.repeat(20)}`
+const assessmentId = `asm_${'e'.repeat(20)}`
+const optionId = `opt_${'f'.repeat(20)}`
 const modelSelection = { provider: 'provider-fixture', model: 'model-fixture', reasoningEffort: 'medium' }
 const dshSessionIds = ['session_a', 'session_b']
 const dshDigest = 'd'.repeat(64)
@@ -61,6 +64,9 @@ function operations(override: Partial<ProductOperations> = {}): ProductOperation
     listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [] })),
     updateKnowledgePoint: vi.fn(async () => ({ knowledgePoint: { knowledgePointId } })),
     deleteRun: vi.fn(async id => ({ runId: id, deleted: true as const })),
+    syncLearningCourse: vi.fn(async params => ({ courseId, ...params } as any)),
+    getLearningCourse: vi.fn(async id => ({ courseId: id } as any)),
+    submitLearningAttempt: vi.fn(async params => ({ attempt: { ...params, correct: true } } as any)),
     ...override,
   }
 }
@@ -130,6 +136,43 @@ const routes = [
 const states: CoreState[] = ['STARTING', 'READY', 'RESTARTING', 'DEGRADED', 'DISPOSING', 'DISPOSED']
 
 describe('product route table', () => {
+  test('serves strict learning course and attempt routes', async () => {
+    const ops = operations()
+    const { port, dispose } = await listen('READY', ops)
+    const sync = {
+      clientBookId: 'book-nist', title: 'NIST 云计算',
+      knowledgePointIds: [knowledgePointId],
+    }
+
+    const created = await send(port, {
+      method: 'POST', path: '/nobei/v1/learning-courses', body: JSON.stringify(sync),
+    })
+    expect(created.status).toBe(200)
+    expect(ops.syncLearningCourse).toHaveBeenCalledWith(sync)
+
+    const loaded = await send(port, {
+      method: 'GET', path: `/nobei/v1/learning-courses/${courseId}`,
+    })
+    expect(loaded.status).toBe(200)
+    expect(ops.getLearningCourse).toHaveBeenCalledWith(courseId)
+
+    const attempt = { optionId, idempotencyKey }
+    const submitted = await send(port, {
+      method: 'POST', path: `/nobei/v1/learning-assessments/${assessmentId}/attempts`,
+      body: JSON.stringify(attempt),
+    })
+    expect(submitted.status).toBe(200)
+    expect(ops.submitLearningAttempt).toHaveBeenCalledWith({ assessmentId, ...attempt })
+
+    for (const invalid of [
+      { method: 'POST', path: '/nobei/v1/learning-courses', body: JSON.stringify({ ...sync, extra: true }) },
+      { method: 'GET', path: '/nobei/v1/learning-courses/course_bad' },
+      { method: 'POST', path: `/nobei/v1/learning-assessments/${assessmentId}/attempts`, body: JSON.stringify({ ...attempt, optionId: '../bad' }) },
+    ]) {
+      expect((await send(port, invalid)).status).toBe(400)
+    }
+    dispose()
+  })
   test('serves the global run collection before the parameterized run route', async () => {
     const listRuns = vi.fn(async () => ({ runs: [] }))
     const ops = operations() as ProductOperations & { listRuns(): Promise<{ runs: unknown[] }> }

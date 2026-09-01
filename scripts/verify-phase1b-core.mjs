@@ -20,14 +20,16 @@ async function exists(path) {
 
 export async function assertProductSchemaAssets(root = packageRoot) {
   const sqlRoot = join(root, 'python', 'nobei_core', 'sql')
-  const expectedSchema = join(sqlRoot, '001_product.sql')
-  if (!await exists(expectedSchema)) throw new Error('PRODUCT_SCHEMA_MISSING')
+  const schemaFiles = ['001_product.sql', '002_learning.sql']
+  if (!(await Promise.all(schemaFiles.map(name => exists(join(sqlRoot, name))))).every(Boolean)) {
+    throw new Error('PRODUCT_SCHEMA_MISSING')
+  }
   const sqlFiles = (await readdir(sqlRoot)).filter((name) => name.endsWith('.sql')).sort()
-  if (sqlFiles.join('\0') !== '001_product.sql') throw new Error('PRODUCT_SCHEMA_SET_INVALID')
+  if (sqlFiles.join('\0') !== schemaFiles.join('\0')) throw new Error('PRODUCT_SCHEMA_SET_INVALID')
   if (await exists(join(root, 'vendor', 'schema-v8')) || await exists(join(sqlRoot, 'v8'))) {
     throw new Error('LEGACY_V8_SCHEMA_PRESENT')
   }
-  return { schema: '001_product.sql' }
+  return { schemas: schemaFiles }
 }
 
 export async function verifyProductSchemaPackage(root = packageRoot) {
@@ -39,13 +41,14 @@ export async function verifyProductSchemaPackage(root = packageRoot) {
     if (tarballs.length !== 1) throw new Error('PACKAGE_TARBALL_INVALID')
     const { stdout } = await run('tar', ['-tzf', join(outputDirectory, tarballs[0])])
     const entries = stdout.trim().split('\n').filter(Boolean)
-    if (!entries.includes('package/python/nobei_core/sql/001_product.sql')) {
+    if (!['001_product.sql', '002_learning.sql'].every(name =>
+      entries.includes(`package/python/nobei_core/sql/${name}`))) {
       throw new Error('PRODUCT_SCHEMA_NOT_PACKAGED')
     }
     if (entries.some((entry) => entry.includes('/sql/v8/') || entry.includes('schema-v8') || entry.endsWith('/phase1_schema.sql'))) {
       throw new Error('LEGACY_SCHEMA_PACKAGED')
     }
-    return { schema: '001_product.sql', packageEntries: entries.length }
+    return { schemas: ['001_product.sql', '002_learning.sql'], packageEntries: entries.length }
   } finally {
     await rm(outputDirectory, { recursive: true, force: true })
   }

@@ -361,6 +361,12 @@ export const CLIENT_CSS = `
 .betterlearn-learning__toolbar button[aria-expanded="true"] { border-color: color-mix(in srgb, var(--nobei-action) 40%, var(--nobei-line)); color: var(--nobei-action); background: color-mix(in srgb, var(--nobei-action) 7%, var(--nobei-surface)); }
 .betterlearn-learning__toolbar > p { display: flex; align-items: baseline; gap: 8px; margin: 0; color: var(--nobei-muted); font-size: 0.76rem; }
 .betterlearn-learning__toolbar > p strong { color: var(--nobei-ink); font: 750 0.82rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.betterlearn-learning__loading { display: grid; place-content: center; justify-items: center; flex: 1 1 auto; gap: 10px; min-height: 0; padding: 28px; text-align: center; color: var(--nobei-muted); }
+.betterlearn-learning__loading h2 { margin: 0; color: var(--nobei-ink); font: 750 1.15rem/1.4 ui-serif, "Songti SC", Georgia, serif; }
+.betterlearn-learning__loading p { margin: 0; }
+.betterlearn-learning__loading button { border: 1px solid var(--nobei-action); border-radius: 9px; padding: 8px 13px; color: #FFFFFF; background: var(--nobei-action); cursor: pointer; }
+.betterlearn-learning__loading-dot { width: 22px; height: 22px; border: 3px solid color-mix(in srgb, var(--nobei-action) 20%, var(--nobei-line)); border-block-start-color: var(--nobei-action); border-radius: 50%; animation: betterlearn-learning-spin 0.8s linear infinite; }
+@keyframes betterlearn-learning-spin { to { transform: rotate(1turn); } }
 .betterlearn-learning__body { display: grid; flex: 1 1 auto; grid-template-columns: 224px minmax(0, 1fr) 250px; min-width: 0; min-height: 0; overflow: hidden; }
 .betterlearn-learning[data-left-open="false"] .betterlearn-learning__body { grid-template-columns: minmax(0, 1fr) 250px; }
 .betterlearn-learning[data-right-open="false"] .betterlearn-learning__body { grid-template-columns: 224px minmax(0, 1fr); }
@@ -378,6 +384,7 @@ export const CLIENT_CSS = `
 .betterlearn-learning__path li button[aria-current="step"] { border-color: color-mix(in srgb, var(--nobei-action) 28%, var(--nobei-line)); color: var(--nobei-ink); background: color-mix(in srgb, var(--nobei-action) 7%, var(--nobei-surface)); }
 .betterlearn-learning__path li button > span:first-child { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--nobei-line); border-radius: 50%; color: var(--nobei-muted); background: var(--nobei-surface); font: 750 0.68rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .betterlearn-learning__path li button[aria-current="step"] > span:first-child { border-color: var(--nobei-action); color: #FFFFFF; background: var(--nobei-action); box-shadow: 0 0 0 4px color-mix(in srgb, var(--nobei-action) 12%, transparent); }
+.betterlearn-learning__path li[data-delivery="completed"] button > span:first-child { border-color: var(--nobei-accepted); color: #FFFFFF; background: var(--nobei-accepted); }
 .betterlearn-learning__path li button > span:last-child { display: grid; gap: 3px; min-width: 0; }
 .betterlearn-learning__path li strong { overflow-wrap: anywhere; font-size: 0.82rem; }
 .betterlearn-learning__path li small { display: -webkit-box; overflow: hidden; color: var(--nobei-muted); font-size: 0.69rem; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -406,6 +413,7 @@ export const CLIENT_CSS = `
 .betterlearn-learning__options button[aria-checked="true"] { border-color: var(--nobei-action); background: color-mix(in srgb, var(--nobei-action) 7%, var(--nobei-surface)); }
 .betterlearn-learning__options button > span:first-child { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid var(--nobei-line); border-radius: 50%; color: var(--nobei-muted); font: 750 0.7rem/1 ui-monospace, "SFMono-Regular", Consolas, monospace; }
 .betterlearn-learning__options button[aria-checked="true"] > span:first-child { border-color: var(--nobei-action); color: #FFFFFF; background: var(--nobei-action); }
+.betterlearn-learning__options button:disabled { cursor: default; opacity: 0.72; }
 .betterlearn-learning__primary { margin-block-start: 12px; border: 1px solid var(--nobei-action); border-radius: 9px; padding: 9px 15px; color: #FFFFFF; background: var(--nobei-action); font-weight: 750; cursor: pointer; }
 .betterlearn-learning__primary:disabled { cursor: not-allowed; opacity: 0.48; }
 .betterlearn-learning__passed { display: flex; align-items: center; gap: 9px; margin-block-start: 14px; padding: 12px 14px; border-inline-start: 3px solid var(--nobei-accepted); color: var(--nobei-accepted); background: color-mix(in srgb, var(--nobei-accepted) 8%, var(--nobei-surface)); }
@@ -416,6 +424,7 @@ export const CLIENT_CSS = `
 .betterlearn-learning__retest { margin-block-start: 18px; padding-block-start: 16px; border-block-start: 1px solid color-mix(in srgb, var(--nobei-evidence) 34%, var(--nobei-line)); }
 .betterlearn-learning__retest h4 { margin-block-end: 12px; }
 .betterlearn-learning__retry { margin: 10px 0 0; color: var(--nobei-rejected); }
+.betterlearn-learning__operation-error { margin: 12px 0 0; color: var(--nobei-rejected); font-weight: 700; }
 .betterlearn-learning__evidence { min-width: 0; min-height: 0; overflow: auto; border-inline-start: 1px solid var(--nobei-line); background: var(--nobei-surface); }
 .betterlearn-learning__evidence > section { padding: 21px 18px; }
 .betterlearn-learning__evidence > section + section { border-block-start: 1px solid var(--nobei-line); }

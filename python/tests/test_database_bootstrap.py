@@ -6,6 +6,7 @@ import pytest
 from nobei_core.database import Phase1Database
 from nobei_core.errors import CoreProblem
 NOW = "2026-08-31T00:00:00Z"
+PYTHON_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_write_transaction_rolls_back_and_never_nests(database: Phase1Database):
@@ -153,11 +154,39 @@ def test_product_bootstrap_has_only_product_tables_and_pragmas(database):
         'schema_meta', 'documents', 'runs', 'generation_attempts', 'candidates',
         'candidate_evidence', 'candidate_reviews', 'knowledge_points',
         'knowledge_point_evidence', 'run_events', 'idempotency_records',
+        'learning_courses', 'learning_units', 'learning_assessments',
+        'learning_attempts', 'learning_mastery_states',
     }
     assert database.scalar('PRAGMA foreign_keys') == 1
     assert database.scalar('PRAGMA journal_mode') == 'wal'
     assert database.all('PRAGMA foreign_key_check') == []
     assert database.scalar('SELECT COUNT(*) FROM schema_meta') == 1
+    assert database.schema_version() == 2
+
+
+def test_version_one_database_migrates_in_place_without_losing_product_data(
+    owned_root, ownership_token
+):
+    path = owned_root / 'phase1.db'
+    schema = (PYTHON_ROOT / 'nobei_core' / 'sql' / '001_product.sql').read_text('utf-8')
+    con = sqlite3.connect(path)
+    con.executescript(schema)
+    con.execute(
+        "INSERT INTO documents(id,filename,media_type,canonical_text,byte_size,"
+        "character_count,text_sha256,created_at) VALUES(?,?,?,?,?,?,?,?)",
+        ('doc_' + 'd' * 20, 'kept.md', 'text/markdown', '保留', 6, 2, 'e' * 64,
+         '2026-09-01T00:00:00Z'),
+    )
+    con.commit()
+    con.close()
+
+    db = Phase1Database.open(owned_root, ownership_token)
+    try:
+        assert db.schema_version() == 2
+        assert db.scalar("SELECT filename FROM documents WHERE id=?", ('doc_' + 'd' * 20,)) == 'kept.md'
+        assert db.scalar("SELECT COUNT(*) FROM learning_courses") == 0
+    finally:
+        db.close()
 
 
 def test_product_reopen_keeps_schema_and_data(owned_root, ownership_token):

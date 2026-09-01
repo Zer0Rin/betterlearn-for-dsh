@@ -160,6 +160,83 @@ export interface RunDeleteResult {
   deleted: true
 }
 
+export interface LearningCourseSyncRequest {
+  clientBookId: string
+  title: string
+  knowledgePointIds: string[]
+}
+
+export interface LearningOption {
+  optionId: string
+  label: string
+}
+
+export interface LearningAssessmentAttempt {
+  selectedOptionId: string
+  correct: boolean
+  submittedAt: string
+}
+
+export interface LearningAssessment {
+  assessmentId: string
+  kind: 'claim_choice' | 'evidence_choice'
+  prompt: string
+  options: LearningOption[]
+  attempt: LearningAssessmentAttempt | null
+}
+
+export type LearningEvidence = {
+  kind: 'quote'
+  quote: string
+  contextBefore: string
+  contextAfter: string
+  textStart: number
+  textEnd: number
+} | { kind: 'summary'; text: string }
+
+export type LearningMasteryStatus =
+  | 'new'
+  | 'remediation_required'
+  | 'learning'
+  | 'mastered'
+  | 'mastered_after_remediation'
+
+export interface LearningUnit {
+  unitId: string
+  knowledgePointId: string
+  type: KnowledgePointType
+  title: string
+  objective: string
+  lesson: { explanation: string; workedExample: string; supplemental: string }
+  evidence: LearningEvidence
+  mastery: { status: LearningMasteryStatus; strength: number; dueAt: string | null }
+  check: {
+    main: LearningAssessment
+    remediation: { title: string; body: string }
+    retest: LearningAssessment
+  }
+}
+
+export interface LearningCourse {
+  courseId: string
+  clientBookId: string
+  title: string
+  status: 'active' | 'archived'
+  progress: { completed: number; total: number; mastery: number }
+  units: LearningUnit[]
+}
+
+export interface LearningAttemptResult {
+  attempt: {
+    attemptId: string
+    assessmentId: string
+    selectedOptionId: string
+    correct: boolean
+    submittedAt: string
+  }
+  course: LearningCourse
+}
+
 export interface ExtractionPlan {
   strategy: 'L1' | 'L2' | 'L3'
   maxCalls: number
@@ -217,4 +294,11 @@ export interface ClientApi {
   listKnowledgePoints(runId: string, signal?: AbortSignal): Promise<{ knowledgePoints: KnowledgePointSnapshot[] }>
   updateKnowledgePoint(knowledgePointId: string, input: { title: string; statement: string }, signal?: AbortSignal): Promise<KnowledgePointUpdateResult>
   deleteRun(runId: string, signal?: AbortSignal): Promise<RunDeleteResult>
+  syncLearningCourse(input: LearningCourseSyncRequest, signal?: AbortSignal): Promise<LearningCourse>
+  getLearningCourse(courseId: string, signal?: AbortSignal): Promise<LearningCourse>
+  submitLearningAttempt(
+    assessmentId: string,
+    input: { optionId: string; idempotencyKey: string },
+    signal?: AbortSignal,
+  ): Promise<LearningAttemptResult>
 }

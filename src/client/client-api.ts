@@ -14,6 +14,9 @@ import type {
   KnowledgePointUpdateResult,
   RunHistoryResult,
   RunDeleteResult,
+  LearningAttemptResult,
+  LearningCourse,
+  LearningCourseSyncRequest,
 } from './types.js'
 import type { GenerationProgress } from '../generation-progress.js'
 
@@ -139,6 +142,22 @@ export function createClientApi(): ClientApi {
     },
     deleteRun(runId, signal) {
       return del<RunDeleteResult>(`/nobei/v1/runs/${encodeURIComponent(runId)}`, signal)
+    },
+    syncLearningCourse(input: LearningCourseSyncRequest, signal?: AbortSignal) {
+      return post<LearningCourse>('/nobei/v1/learning-courses', input, signal)
+    },
+    getLearningCourse(courseId: string, signal?: AbortSignal) {
+      return get<LearningCourse>(
+        `/nobei/v1/learning-courses/${encodeURIComponent(courseId)}`,
+        signal,
+      )
+    },
+    submitLearningAttempt(assessmentId, input, signal) {
+      return post<LearningAttemptResult>(
+        `/nobei/v1/learning-assessments/${encodeURIComponent(assessmentId)}/attempts`,
+        input,
+        signal,
+      )
     },
   }
 }

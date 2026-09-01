@@ -16,10 +16,10 @@ async function exists(url: URL): Promise<boolean> {
 }
 
 describe('product schema package assets', () => {
-  test('ships the single product migration and no v8 staging assets', async () => {
+  test('ships the ordered product migrations and no v8 staging assets', async () => {
     expect(await exists(productSchema)).toBe(true)
     expect((await readdir(sqlDirectory)).filter((name) => name.endsWith('.sql')).sort())
-      .toEqual(['001_product.sql'])
+      .toEqual(['001_product.sql', '002_learning.sql'])
     expect(await exists(legacySchemaSource)).toBe(false)
     expect(await exists(legacyStagedSchema)).toBe(false)
   })

@@ -52,6 +52,9 @@ RPC_METHODS = MappingProxyType(
         "candidates.review": "review_candidate",
         "knowledge_points.list_for_run": "list_knowledge_points",
         "knowledge_points.update": "update_knowledge_point",
+        "learning_courses.sync": "sync_learning_course",
+        "learning_courses.get": "get_learning_course",
+        "learning_attempts.submit": "submit_learning_attempt",
     }
 )
 
@@ -65,7 +68,10 @@ GENERATION_RETRYABILITY = MappingProxyType(
     }
 )
 
-RESOURCE_ID_PREFIXES = frozenset({"doc", "ck", "job", "att", "cand", "kp", "ev", "cfl"})
+RESOURCE_ID_PREFIXES = frozenset({
+    "doc", "ck", "job", "att", "cand", "kp", "ev", "cfl",
+    "course", "unit", "asm", "latt",
+})
 OPAQUE_ID_HEX_LENGTH = 20
 IDEMPOTENCY_KEY_PREFIX = "idem"
 
@@ -138,6 +144,10 @@ PUBLIC_ERROR_CODES = frozenset(
         "EVIDENCE_AMBIGUOUS",
         "CANDIDATE_ALREADY_REVIEWED",
         "IDEMPOTENCY_CONFLICT",
+        "LEARNING_COURSE_NOT_FOUND",
+        "LEARNING_ASSESSMENT_NOT_FOUND",
+        "LEARNING_COURSE_CONFLICT",
+        "LEARNING_STATE_CONFLICT",
         "DATABASE_UNAVAILABLE",
         "TRANSACTION_FAILED",
     }

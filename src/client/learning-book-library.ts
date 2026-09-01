@@ -1,5 +1,6 @@
-import { createLearningPreviewCourse, type LearningPreviewCourse } from './learning-preview.js'
-import type { EvidenceSpan, KnowledgePointSnapshot, KnowledgePointType } from './types.js'
+import type {
+  EvidenceSpan, KnowledgePointSnapshot, KnowledgePointType, LearningCourse,
+} from './types.js'
 
 export const LEARNING_BOOK_STORAGE_KEY = 'betterlearn:learning-books:v1'
 
@@ -14,13 +15,16 @@ export interface LearningBook {
   createdAt: string
   sourceText: string
   points: KnowledgePointSnapshot[]
-  course: LearningPreviewCourse
+  courseId?: string
+  progress?: LearningCourse['progress']
 }
 
 interface StoredLearningBook extends LearningBookIdentity {
   title: string
   sourceText: string
   points: KnowledgePointSnapshot[]
+  courseId?: string
+  progress?: LearningCourse['progress']
 }
 
 const POINT_TYPES = new Set<KnowledgePointType>([
@@ -58,10 +62,29 @@ function point(value: unknown): value is KnowledgePointSnapshot {
     && Array.isArray(value.evidence) && value.evidence.every(evidence)
 }
 
-function storedBook(value: unknown): value is StoredLearningBook {
+function progress(value: unknown): value is LearningCourse['progress'] {
+  return record(value) && exactKeys(value, ['completed', 'total', 'mastery'])
+    && Number.isInteger(value.completed) && Number(value.completed) >= 0
+    && Number.isInteger(value.total) && Number(value.total) >= 0
+    && Number(value.completed) <= Number(value.total)
+    && Number.isInteger(value.mastery) && Number(value.mastery) >= 0 && Number(value.mastery) <= 100
+}
+
+function storedBookV1(value: unknown): value is StoredLearningBook {
+  if (!record(value) || !exactKeys(value, ['bookId', 'title', 'createdAt', 'sourceText', 'points'])) return false
+  return baseStoredBook(value)
+}
+
+function storedBookV2(value: unknown): value is StoredLearningBook {
   if (!record(value) || !exactKeys(value, [
-    'bookId', 'title', 'createdAt', 'sourceText', 'points',
+    'bookId', 'title', 'createdAt', 'sourceText', 'points', 'courseId', 'progress',
   ])) return false
+  return baseStoredBook(value)
+    && (value.courseId === null || typeof value.courseId === 'string')
+    && (value.progress === null || progress(value.progress))
+}
+
+function baseStoredBook(value: Record<string, unknown>): boolean {
   return typeof value.bookId === 'string' && value.bookId.length > 0
     && typeof value.title === 'string' && value.title.length > 0
     && typeof value.createdAt === 'string' && Number.isFinite(Date.parse(value.createdAt))
@@ -87,10 +110,15 @@ export function createLearningBook(input: {
     title: input.title,
     sourceText: input.sourceText,
     points,
-    course: createLearningPreviewCourse(points, input.sourceText, {
-      courseId: identity.bookId,
-      title: input.title,
-    }),
+  }
+}
+
+export function updateLearningBookCourse(book: LearningBook, course: LearningCourse): LearningBook {
+  if (course.clientBookId !== book.bookId) return book
+  return {
+    ...book,
+    courseId: course.courseId,
+    progress: { ...course.progress },
   }
 }
 
@@ -100,13 +128,18 @@ export function readLearningBooks(storage: Storage): LearningBook[] {
     if (raw === null) return []
     const payload: unknown = JSON.parse(raw)
     if (!record(payload) || !exactKeys(payload, ['version', 'books'])
-      || payload.version !== 1 || !Array.isArray(payload.books)
-      || !payload.books.every(storedBook)) return []
-    return payload.books.map(book => createLearningBook({
+      || !Array.isArray(payload.books)) return []
+    const legacy = payload.version === 1 && payload.books.every(storedBookV1)
+    const current = payload.version === 2 && payload.books.every(storedBookV2)
+    if (!legacy && !current) return []
+    return (payload.books as StoredLearningBook[]).map(book => ({ ...createLearningBook({
       title: book.title,
       points: book.points,
       sourceText: book.sourceText,
-    }, { bookId: book.bookId, createdAt: book.createdAt }))
+    }, { bookId: book.bookId, createdAt: book.createdAt }),
+    ...(typeof book.courseId === 'string' ? { courseId: book.courseId } : {}),
+    ...(book.progress === undefined || book.progress === null ? {} : { progress: { ...book.progress } }),
+    }))
   } catch {
     return []
   }
@@ -115,9 +148,11 @@ export function readLearningBooks(storage: Storage): LearningBook[] {
 export function writeLearningBooks(storage: Storage, books: LearningBook[]): boolean {
   try {
     storage.setItem(LEARNING_BOOK_STORAGE_KEY, JSON.stringify({
-      version: 1,
-      books: books.map(({ bookId, title, createdAt, sourceText, points }) => ({
+      version: 2,
+      books: books.map(({ bookId, title, createdAt, sourceText, points, courseId, progress }) => ({
         bookId, title, createdAt, sourceText, points,
+        courseId: courseId ?? null,
+        progress: progress ?? null,
       })),
     }))
     return true
