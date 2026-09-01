@@ -140,6 +140,11 @@ export interface ReviewResult {
   knowledgePoint: KnowledgePointSnapshot | null
 }
 
+export interface KnowledgePointUpdateResult {
+  knowledgePoint: KnowledgePointSnapshot
+  run: RunSnapshot
+}
+
 export interface ExtractionPlan {
   strategy: 'L1' | 'L2' | 'L3'
   maxCalls: number
@@ -170,4 +175,5 @@ export interface ClientApi {
   listCandidates(runId: string, signal?: AbortSignal): Promise<{ candidates: CandidateSnapshot[] }>
   reviewCandidate(candidateId: string, input: ReviewCommand, signal?: AbortSignal): Promise<ReviewResult>
   listKnowledgePoints(runId: string, signal?: AbortSignal): Promise<{ knowledgePoints: KnowledgePointSnapshot[] }>
+  updateKnowledgePoint(knowledgePointId: string, input: { title: string; statement: string }, signal?: AbortSignal): Promise<KnowledgePointUpdateResult>
 }

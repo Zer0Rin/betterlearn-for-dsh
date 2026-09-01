@@ -25,6 +25,7 @@ import type {
   RunHistoryResult,
   RunParams,
   SubmitGenerationParams,
+  UpdateKnowledgePointParams,
 } from './types.js'
 
 interface PendingRequest {
@@ -132,6 +133,10 @@ export class FixedCoreRpcClient {
     return this.#request(
       'knowledge_points.list_for_run', params, CORE_READ_RPC_TIMEOUT_MS, signal,
     ) as Promise<KnowledgePointList>
+  }
+
+  updateKnowledgePoint(params: UpdateKnowledgePointParams, signal?: AbortSignal): Promise<CoreObjectResult> {
+    return this.#request('knowledge_points.update', params, CORE_WRITE_RPC_TIMEOUT_MS, signal)
   }
 
   close(): void {

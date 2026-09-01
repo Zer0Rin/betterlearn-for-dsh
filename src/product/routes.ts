@@ -24,6 +24,7 @@ import type {
   ReviewCandidateParams,
   RetryAndPrepareParams,
   RunHistoryResult,
+  UpdateKnowledgePointParams,
 } from './types.js'
 
 export interface ProductOperations {
@@ -38,6 +39,7 @@ export interface ProductOperations {
   listCandidates(runId: string, signal?: AbortSignal): Promise<CandidateList>
   reviewCandidate(params: ReviewCandidateParams, signal?: AbortSignal): Promise<CoreObjectResult>
   listKnowledgePoints(runId: string, signal?: AbortSignal): Promise<KnowledgePointList>
+  updateKnowledgePoint(params: UpdateKnowledgePointParams, signal?: AbortSignal): Promise<CoreObjectResult>
 }
 
 interface SupervisorState {
@@ -56,6 +58,7 @@ type RouteMatch =
   | { kind: 'candidates'; method: 'GET'; runId: string }
   | { kind: 'review'; method: 'POST'; candidateId: string }
   | { kind: 'knowledge-points'; method: 'GET'; runId: string }
+  | { kind: 'knowledge-point-update'; method: 'PATCH'; knowledgePointId: string }
 
 function sendJson(res: ServerResponse, status: number, value: unknown, extra?: Record<string, string>): void {
   const body = JSON.stringify(value)
@@ -100,6 +103,8 @@ function matchRoute(url: URL): RouteMatch | undefined {
   if (match && url.search === '') return { kind: 'review', method: 'POST', candidateId: match[1] }
   match = /^\/nobei\/v1\/runs\/([^/]+)\/knowledge-points$/.exec(url.pathname)
   if (match && url.search === '') return { kind: 'knowledge-points', method: 'GET', runId: match[1] }
+  match = /^\/nobei\/v1\/knowledge-points\/([^/]+)$/.exec(url.pathname)
+  if (match && url.search === '') return { kind: 'knowledge-point-update', method: 'PATCH', knowledgePointId: match[1] }
   return undefined
 }
 
@@ -110,8 +115,14 @@ function exactObject(value: unknown, keys: readonly string[]): value is Record<s
   return actual.length === expected.length && actual.every((key, index) => key === expected[index])
 }
 
-function resourceId(value: string, prefix: 'job' | 'cand'): boolean {
+function resourceId(value: string, prefix: 'job' | 'cand' | 'kp'): boolean {
   return new RegExp(`^${prefix}_[0-9a-f]{20}$`).test(value)
+}
+
+function parseKnowledgePointUpdate(value: unknown, knowledgePointId: string): UpdateKnowledgePointParams | undefined {
+  if (!exactObject(value, ['title', 'statement'])) return undefined
+  if (!validModelText(value.title, 120) || !validModelText(value.statement, 2_000)) return undefined
+  return { knowledgePointId, title: value.title, statement: value.statement }
 }
 
 function positiveRevision(value: unknown): value is number {
@@ -272,6 +283,9 @@ export function registerProductRoutes(
       if (route.kind === 'review' && !resourceId(route.candidateId, 'cand')) {
         return sendError(res, 400, 'REQUEST_INPUT_INVALID')
       }
+      if (route.kind === 'knowledge-point-update' && !resourceId(route.knowledgePointId, 'kp')) {
+        return sendError(res, 400, 'REQUEST_INPUT_INVALID')
+      }
       const after = route.kind === 'events' && route.queryValid && /^(?:0|[1-9]\d*)$/.test(route.after ?? '')
         ? Number(route.after)
         : undefined
@@ -282,11 +296,15 @@ export function registerProductRoutes(
       const importParams = route.kind === 'import' ? parseImport(body) : undefined
       const retryParams = route.kind === 'retry' ? parseRetry(body, route.runId) : undefined
       const reviewParams = route.kind === 'review' ? parseReview(body, route.candidateId) : undefined
+      const updateParams = route.kind === 'knowledge-point-update'
+        ? parseKnowledgePointUpdate(body, route.knowledgePointId)
+        : undefined
       if (
         (route.kind === 'preview' && !previewParams)
         || (route.kind === 'import' && !importParams)
         || (route.kind === 'retry' && !retryParams)
         || (route.kind === 'review' && !reviewParams)
+        || (route.kind === 'knowledge-point-update' && !updateParams)
       ) return sendError(res, 400, 'REQUEST_INPUT_INVALID')
 
       if (supervisor.state !== 'READY') return sendError(res, 503, 'CORE_UNAVAILABLE')
@@ -326,7 +344,8 @@ export function registerProductRoutes(
         else if (route.kind === 'retry') result = await operations.launchRetry(retryParams as RetryAndPrepareParams)
         else if (route.kind === 'candidates') result = await operations.listCandidates(route.runId)
         else if (route.kind === 'review') result = await operations.reviewCandidate(reviewParams as ReviewCandidateParams)
-        else result = await operations.listKnowledgePoints(route.runId)
+        else if (route.kind === 'knowledge-points') result = await operations.listKnowledgePoints(route.runId)
+        else result = await operations.updateKnowledgePoint(updateParams as UpdateKnowledgePointParams)
         if (!res.destroyed && !res.writableEnded) {
           sendJson(res, route.kind === 'import' || route.kind === 'retry' ? 202 : 200, { ok: true, result })
         }

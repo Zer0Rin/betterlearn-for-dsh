@@ -107,6 +107,11 @@ describe('phase1c product plugin', () => {
     supervisor.withReadyClient.mockImplementation(async (use: (client: { listRuns: typeof listRuns }) => unknown) => use({ listRuns }))
     await operations.listRuns()
     expect(listRuns).toHaveBeenCalledWith(undefined)
+    const updateKnowledgePoint = vi.fn(async () => ({ knowledgePoint: {} }))
+    supervisor.withReadyClient.mockImplementation(async (use: (client: { updateKnowledgePoint: typeof updateKnowledgePoint }) => unknown) => use({ updateKnowledgePoint }))
+    const update = { knowledgePointId: 'kp_0123456789abcdefabcd', title: '新标题', statement: '新陈述' }
+    await operations.updateKnowledgePoint(update)
+    expect(updateKnowledgePoint).toHaveBeenCalledWith(update, undefined)
     await dispose()
     await dispose()
     expect(order).toEqual([

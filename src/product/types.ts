@@ -107,6 +107,12 @@ export interface ReviewCandidateParams {
   statement?: string
 }
 
+export interface UpdateKnowledgePointParams {
+  knowledgePointId: OpaqueId
+  title: string
+  statement: string
+}
+
 export interface CoreRunSnapshot extends Record<string, unknown> {
   runId: OpaqueId
   documentId: OpaqueId
@@ -143,6 +149,11 @@ export interface CandidateList extends Record<string, unknown> {
 
 export interface KnowledgePointList extends Record<string, unknown> {
   knowledgePoints: Array<Record<string, unknown>>
+}
+
+export interface KnowledgePointUpdateResult extends Record<string, unknown> {
+  knowledgePoint: Record<string, unknown>
+  run: CoreRunSnapshot
 }
 
 export type CoreObjectResult = Record<string, unknown>

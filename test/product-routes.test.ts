@@ -9,6 +9,7 @@ import type { CoreState } from '../src/product/types.js'
 
 const runId = `job_${'a'.repeat(20)}`
 const candidateId = `cand_${'b'.repeat(20)}`
+const knowledgePointId = `kp_${'c'.repeat(20)}`
 const idempotencyKey = `idem_${'c'.repeat(20)}`
 const modelSelection = { provider: 'provider-fixture', model: 'model-fixture', reasoningEffort: 'medium' }
 const servers = new Set<ReturnType<typeof createServer>>()
@@ -32,6 +33,7 @@ function operations(override: Partial<ProductOperations> = {}): ProductOperation
     listCandidates: vi.fn(async () => ({ candidates: [] })),
     reviewCandidate: vi.fn(async () => ({ candidateId, status: 'accepted' })),
     listKnowledgePoints: vi.fn(async () => ({ knowledgePoints: [] })),
+    updateKnowledgePoint: vi.fn(async () => ({ knowledgePoint: { knowledgePointId } })),
     ...override,
   }
 }
@@ -70,7 +72,7 @@ async function send(port: number, input: {
     'sec-fetch-site': 'same-origin',
     ...input.headers,
   }
-  if (input.method === 'POST' && headers['content-type'] === undefined) headers['content-type'] = 'application/json'
+  if ((input.method === 'POST' || input.method === 'PATCH') && headers['content-type'] === undefined) headers['content-type'] = 'application/json'
   return new Promise<{ status: number; body: any; headers: Record<string, unknown> }>((resolve, reject) => {
     const request = httpRequest({ host: '127.0.0.1', port, ...input, headers }, (response) => {
       const chunks: Buffer[] = []
@@ -94,6 +96,7 @@ const routes = [
   { key: 'listCandidates', method: 'GET', path: `/nobei/v1/runs/${runId}/candidates`, status: 200 },
   { key: 'reviewCandidate', method: 'POST', path: `/nobei/v1/candidates/${candidateId}/review`, body: JSON.stringify({ action: 'accept', expectedRevision: 2, idempotencyKey }), status: 200 },
   { key: 'listKnowledgePoints', method: 'GET', path: `/nobei/v1/runs/${runId}/knowledge-points`, status: 200 },
+  { key: 'updateKnowledgePoint', method: 'PATCH', path: `/nobei/v1/knowledge-points/${knowledgePointId}`, body: JSON.stringify({ title: '新标题', statement: '新陈述' }), status: 200 },
 ] as const
 
 const states: CoreState[] = ['STARTING', 'READY', 'RESTARTING', 'DEGRADED', 'DISPOSING', 'DISPOSED']
@@ -193,6 +196,10 @@ describe('product route table', () => {
     ['surrogate model', { method: 'POST', path: '/nobei/v1/imports', body: JSON.stringify({ filename: 'a.txt', mediaType: 'text/plain', text: 'a', modelSelection: { provider: 'p', model: '\uD800' } }) }, 400, 'REQUEST_INPUT_INVALID'],
     ['bad revision', { method: 'POST', path: `/nobei/v1/runs/${runId}/retry`, body: JSON.stringify({ expectedRevision: 0 }) }, 400, 'REQUEST_INPUT_INVALID'],
     ['bad idempotency', { method: 'POST', path: `/nobei/v1/candidates/${candidateId}/review`, body: JSON.stringify({ action: 'accept', expectedRevision: 2, idempotencyKey: 'bad' }) }, 400, 'REQUEST_INPUT_INVALID'],
+    ['bad knowledge point id', { method: 'PATCH', path: '/nobei/v1/knowledge-points/not-an-id', body: JSON.stringify({ title: '标题', statement: '陈述' }) }, 400, 'REQUEST_INPUT_INVALID'],
+    ['missing knowledge point field', { method: 'PATCH', path: `/nobei/v1/knowledge-points/${knowledgePointId}`, body: JSON.stringify({ title: '标题' }) }, 400, 'REQUEST_INPUT_INVALID'],
+    ['extra knowledge point field', { method: 'PATCH', path: `/nobei/v1/knowledge-points/${knowledgePointId}`, body: JSON.stringify({ title: '标题', statement: '陈述', extra: true }) }, 400, 'REQUEST_INPUT_INVALID'],
+    ['overlong knowledge point title', { method: 'PATCH', path: `/nobei/v1/knowledge-points/${knowledgePointId}`, body: JSON.stringify({ title: 'x'.repeat(121), statement: '陈述' }) }, 400, 'REQUEST_INPUT_INVALID'],
   ])('returns a closed error for %s', async (_name, input, status, code) => {
     const ops = operations()
     const { port } = await listen('READY', ops)
@@ -201,6 +208,16 @@ describe('product route table', () => {
     expect(response.body).toEqual({ ok: false, error: { code } })
     expect(JSON.stringify(response.body)).not.toContain('canary')
     expect(Object.values(ops).every((operation) => vi.mocked(operation).mock.calls.length === 0)).toBe(true)
+  })
+
+  test('forwards an exact knowledge-point update', async () => {
+    const ops = operations()
+    const { port } = await listen('READY', ops)
+    const response = await send(port, routes.at(-1)!)
+    expect(response.status).toBe(200)
+    expect(ops.updateKnowledgePoint).toHaveBeenCalledWith({
+      knowledgePointId, title: '新标题', statement: '新陈述',
+    })
   })
 
   test('maps generation capacity to 429 without leaking detail', async () => {

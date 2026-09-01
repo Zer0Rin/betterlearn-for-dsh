@@ -9,6 +9,7 @@ import type {
   RunSnapshot,
   CandidateSnapshot,
   KnowledgePointSnapshot,
+  KnowledgePointUpdateResult,
   RunHistoryResult,
 } from './types.js'
 import type { GenerationProgress } from '../generation-progress.js'
@@ -51,6 +52,10 @@ function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>(path, { method: 'POST', body: JSON.stringify(body) }, signal)
+}
+
+function patch<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, signal)
 }
 
 export function createClientApi(): ClientApi {
@@ -109,6 +114,13 @@ export function createClientApi(): ClientApi {
     listKnowledgePoints(runId: string, signal?: AbortSignal) {
       return get<{ knowledgePoints: KnowledgePointSnapshot[] }>(
         `/nobei/v1/runs/${encodeURIComponent(runId)}/knowledge-points`,
+        signal,
+      )
+    },
+    updateKnowledgePoint(knowledgePointId, input, signal) {
+      return patch<KnowledgePointUpdateResult>(
+        `/nobei/v1/knowledge-points/${encodeURIComponent(knowledgePointId)}`,
+        input,
         signal,
       )
     },

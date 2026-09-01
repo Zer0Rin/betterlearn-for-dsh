@@ -66,13 +66,14 @@ describe('phase1d Client API', () => {
     expect(() => createClientApi().watchRun!('job_1', vi.fn())()).not.toThrow()
   })
 
-  test('maps all seven operations to exact same-origin requests', async () => {
+  test('maps all operations to exact same-origin requests', async () => {
     const fetchMock = vi.fn(async () => success({}))
     vi.stubGlobal('fetch', fetchMock)
     const api = createClientApi()
     const controller = new AbortController()
     const runId = 'job_0123456789abcdefabcd'
     const candidateId = 'cand_0123456789abcdefabcd'
+    const knowledgePointId = 'kp_0123456789abcdefabcd'
     const idempotencyKey = `idem_${'a'.repeat(20)}`
 
     await (api as unknown as { listRuns(signal?: AbortSignal): Promise<unknown> })
@@ -132,6 +133,16 @@ describe('phase1d Client API', () => {
     await api.listKnowledgePoints(runId, controller.signal)
     expect(fetchMock).toHaveBeenLastCalledWith(`/nobei/v1/runs/${runId}/knowledge-points`, {
       method: 'GET', headers: {}, signal: controller.signal,
+    })
+
+    await api.updateKnowledgePoint(knowledgePointId, {
+      title: '新标题', statement: '新陈述',
+    }, controller.signal)
+    expect(fetchMock).toHaveBeenLastCalledWith(`/nobei/v1/knowledge-points/${knowledgePointId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '新标题', statement: '新陈述' }),
+      headers: { 'content-type': 'application/json' },
+      signal: controller.signal,
     })
   })
 

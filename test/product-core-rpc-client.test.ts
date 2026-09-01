@@ -49,6 +49,22 @@ describe('FixedCoreRpcClient', () => {
     await expect(pending).resolves.toEqual({ runs: [] })
   })
 
+  test('writes the closed knowledge-point update request', async () => {
+    const { client, input, requests } = pair()
+    const params = {
+      knowledgePointId: 'kp_0123456789abcdefabcd',
+      title: '新标题',
+      statement: '新陈述',
+    }
+    const pending = client.updateKnowledgePoint(params)
+
+    expect(requests).toEqual([{
+      jsonrpc: '2.0', id: 1, method: 'knowledge_points.update', params,
+    }])
+    input.write(result(1, { knowledgePoint: { knowledgePointId: params.knowledgePointId } }))
+    await expect(pending).resolves.toEqual({ knowledgePoint: { knowledgePointId: params.knowledgePointId } })
+  })
+
   test('assembles fragmented UTF-8 and dispatches multiple response frames', async () => {
     const { client, input, requests } = pair()
     const first = client.getRun({ runId: 'job_0123456789abcdefabcd' })
