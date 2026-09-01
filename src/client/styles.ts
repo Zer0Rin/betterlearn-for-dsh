@@ -40,30 +40,31 @@ export const CLIENT_CSS = `
 .betterlearn-floating-launcher:hover { background: #2448C7; }
 .betterlearn-floating-launcher:focus-visible, .betterlearn-floating-header button:focus-visible { outline: 3px solid color-mix(in srgb, var(--nobei-action) 34%, transparent); outline-offset: 3px; }
 .betterlearn-floating-panel {
-  --betterlearn-panel-width: 560px;
-  --betterlearn-history-width: 300px;
+  --betterlearn-history-width: 260px;
   position: absolute;
   top: 16px;
   right: 16px;
   display: flex;
   flex-direction: column;
-  width: min(var(--betterlearn-panel-width), calc(100vw - 32px));
+  width: var(--betterlearn-user-width);
+  height: var(--betterlearn-user-height);
+  max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 32px);
   overflow: hidden;
   pointer-events: auto;
+  container-type: inline-size;
   border: 1px solid var(--nobei-line);
   border-radius: 18px;
   color: var(--nobei-ink);
   background: var(--nobei-paper);
   box-shadow: 0 24px 70px rgb(23 32 51 / 0.2);
-  transition: width 180ms ease, max-height 180ms ease;
+  transition: width 180ms ease, height 180ms ease;
 }
-.betterlearn-floating-panel[data-history-open="true"] { width: min(calc(var(--betterlearn-panel-width) + var(--betterlearn-history-width)), calc(100vw - 32px)); }
-.betterlearn-floating-panel[data-screen="empty"] { --betterlearn-panel-width: 420px; }
-.betterlearn-floating-panel[data-screen="import"] { --betterlearn-panel-width: 560px; }
-.betterlearn-floating-panel[data-screen="processing"] { --betterlearn-panel-width: 520px; }
-.betterlearn-floating-panel[data-screen="review"] { --betterlearn-panel-width: min(1080px, calc(100vw - 32px)); }
-.betterlearn-floating-panel[data-screen="result"] { --betterlearn-panel-width: 600px; }
+.betterlearn-floating-panel[data-resizing="true"] { transition: none; user-select: none; }
+.betterlearn-resize-handle { position: absolute; z-index: 5; touch-action: none; }
+.betterlearn-resize-handle--left { inset: 12px auto 12px -5px; width: 10px; cursor: ew-resize; }
+.betterlearn-resize-handle--bottom { inset: auto 12px -5px 12px; height: 10px; cursor: ns-resize; }
+.betterlearn-resize-handle--corner { left: -7px; bottom: -7px; width: 18px; height: 18px; cursor: nesw-resize; }
 .betterlearn-floating-header {
   display: flex;
   flex: 0 0 auto;
@@ -83,12 +84,21 @@ export const CLIENT_CSS = `
 .betterlearn-floating-panel > .nobei-client-layout { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .nobei-client-layout {
   display: grid;
-  grid-template-columns: minmax(0, var(--betterlearn-panel-width));
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
   min-height: 0;
+  container-type: inline-size;
   color: var(--nobei-ink);
   background: var(--nobei-paper);
 }
-.nobei-client-layout[data-history-open="true"] { grid-template-columns: var(--betterlearn-history-width) minmax(0, var(--betterlearn-panel-width)); }
+.nobei-client-layout[data-history-open="true"] > .nobei-history {
+  position: absolute;
+  z-index: 4;
+  inset: 0 auto 0 0;
+  width: min(var(--betterlearn-history-width), 100%);
+  box-shadow: 18px 0 38px rgb(23 32 51 / 0.18);
+}
 .nobei-history {
   display: flex;
   min-width: 0;
@@ -213,14 +223,9 @@ export const CLIENT_CSS = `
   .nobei-client__review { grid-template-columns: minmax(190px, 0.65fr) minmax(0, 1.35fr); }
   .nobei-client__evidence-reader { grid-column: 2; }
 }
-@media (max-width: 1200px) {
-  .betterlearn-floating-panel[data-history-open="true"] { width: min(var(--betterlearn-panel-width), calc(100vw - 32px)); }
-  .nobei-client-layout[data-history-open="true"] { position: relative; grid-template-columns: minmax(0, var(--betterlearn-panel-width)); }
-  .nobei-client-layout[data-history-open="true"] > .nobei-history { position: absolute; z-index: 2; inset: 0 auto 0 0; width: min(var(--betterlearn-history-width), 100%); box-shadow: 18px 0 38px rgb(23 32 51 / 0.18); }
-}
 @media (max-width: 680px) {
-  .betterlearn-floating-panel { inset: 0; width: 100%; max-height: 100dvh; border-radius: 0; }
-  .betterlearn-floating-panel[data-history-open="true"] { inset: 0; width: 100%; }
+  .betterlearn-floating-panel { inset: 0; width: 100%; height: 100dvh; max-width: none; max-height: 100dvh; border-radius: 0; }
+  .betterlearn-resize-handle { display: none; }
   .nobei-client { padding: 14px; }
   .nobei-client__masthead { display: grid; gap: 12px; }
   .nobei-client__source-identity { justify-items: start; }
@@ -244,6 +249,32 @@ export const CLIENT_CSS = `
   .nobei-client__review { grid-template-columns: minmax(0, 1fr); }
   .nobei-client__evidence-reader { grid-column: 1; }
   .nobei-client__candidate-nav { max-height: 200px; }
+}
+@container (min-width: 720px) {
+  .nobei-client-layout[data-history-open="true"] { grid-template-columns: var(--betterlearn-history-width) minmax(0, 1fr); }
+  .nobei-client-layout[data-history-open="true"] > .nobei-history { position: static; width: auto; box-shadow: none; }
+}
+@container (max-width: 480px) {
+  .nobei-client { padding: 14px; font-size: 14px; line-height: 1.55; }
+  .nobei-client__masthead { display: grid; gap: 10px; margin-block-end: 16px; padding-block-end: 13px; }
+  .nobei-client__masthead h1 { font-size: 1.7em; }
+  .nobei-client__source-identity { justify-items: start; }
+  .nobei-client__import, .nobei-client__progress, .nobei-client__result { padding: 18px 15px; border-radius: 13px; }
+  .nobei-client__tabs { margin-block: 18px 14px; }
+  .nobei-client__tabs button { padding: 8px 10px; }
+  .nobei-client__input-panel input, .nobei-client__input-panel textarea, .nobei-client__candidate-card input, .nobei-client__candidate-card textarea { padding: 9px 10px; }
+  .nobei-client__result-counts { gap: 7px; margin-block: 18px; }
+  .nobei-client__result-counts div { padding: 11px 9px; }
+  .nobei-client__result-counts dd { font-size: 1.55em; }
+  .nobei-client__knowledge-list { gap: 9px; }
+  .nobei-client__knowledge-list article { padding: 14px; }
+}
+@container (max-width: 400px) {
+  .nobei-client { padding: 11px; font-size: 13px; }
+  .nobei-client__masthead h1 { font-size: 1.55em; }
+  .nobei-client__import, .nobei-client__progress, .nobei-client__result { padding: 15px 12px; }
+  .nobei-client__result-counts div { padding: 9px 7px; }
+  .nobei-client__knowledge-list article { padding: 12px; }
 }
 `
 
