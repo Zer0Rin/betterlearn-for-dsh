@@ -1,5 +1,7 @@
 # BetterLearn for DSH
 
+[![CI](https://github.com/Zer0Rin/betterlearn-for-dsh/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Zer0Rin/betterlearn-for-dsh/actions/workflows/ci.yml)
+
 BetterLearn for DSH 是运行在 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/DeepSeek-Harness) WebUI 中的本地、来源可追溯的 AI 学习插件。它将文件或用户选择的 DSH 历史对话转化为可核对原文、可人工审核的知识点，再组织为能够持续学习和记录掌握度的课程。
 
 模型输出不会直接成为正式知识。每条候选必须通过结构化契约和逐字证据定位，并由用户接受、修改或拒绝。业务状态、课程、答题记录与掌握度由常驻 Python Core 和独立 SQLite 持久化。
@@ -9,6 +11,24 @@ BetterLearn for DSH 是运行在 [DeepSeek Harness（DSH）](https://github.com/
 当前版本完成了“资料 / DSH 对话 → 知识提取 → 原文证据校验 → 人工审核 → 学习书 → 客观题 → 错误补救与证据复测 → 掌握度持久化”的第一版闭环。项目仍是单机单用户的 DSH 插件，不是成熟的自适应学习平台，也不读取或迁移旧 Nobei 数据。
 
 当前包版本仍为 `0.0.5`，用于记录阶段性完成状态，不代表正式稳定版发布。可复现的构建、测试和验收方式见[验证说明](docs/validation.md)与[交付验收](docs/delivery-plan.md)。
+
+## Demo
+
+下面的演示在真实 DSH 与 BetterLearn 中运行，使用匿名学习材料和仓库内 Fake Provider。界面、状态机、Python Core、SQLite 写入与学习流程均来自实际 BetterLearn；演示不会连接或收费调用真实模型。
+
+![BetterLearn 从知识提取到补救复测与掌握度持久化的闭环演示](docs/assets/betterlearn-learning-loop.gif)
+
+### 来源证据与人工审核
+
+![BetterLearn 知识点候选、原文证据高亮与人工审核](docs/assets/betterlearn-evidence-review.png)
+
+候选必须定位到原文证据，用户可以接受、修改后接受或拒绝，模型输出不会直接成为正式知识。
+
+### 学习书、进度与掌握度
+
+![BetterLearn 学习书、课程进度与掌握度](docs/assets/betterlearn-learning-space.png)
+
+审核通过的知识点可以整理为学习书；答题、错误补救、证据复测、进度和掌握度由 Python Core 与 SQLite 持久化。完整验证范围见[验证说明](docs/validation.md)。
 
 ## 它能做什么
 
