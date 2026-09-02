@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up pnpm and Node.js
         uses: pnpm/setup@v1
@@ -30,7 +30,8 @@ jobs:
           cache: true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        id: setup-python
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -41,7 +42,11 @@ jobs:
         run: pnpm build
 
       - name: Run TypeScript tests
-        run: pnpm test
+        env:
+          NOBEI_PHASE1_PYTHON: ${{ steps.setup-python.outputs.python-path }}
+        run: pnpm exec vitest run --testTimeout 15000
 
       - name: Run Python tests
+        env:
+          NOBEI_PHASE1_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         run: pnpm test:phase1b-python
