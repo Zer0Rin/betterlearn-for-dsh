@@ -1,10 +1,10 @@
 # BetterLearn 数据模型（设计与实现记录）
 
-> 状态：P2 已实现并通过实际DSH浏览器验收。以下旧结构分析保留为改造前设计记录；当前权威表结构见 `python/nobei_core/sql/001_product.sql`。已采用产品自有11表、文档正文内联、不可变候选与独立审核、文档绝对证据坐标和写事务计数。P3输入与批次计划见 [提取契约](p3-extraction-contract.md)。不建立collections或旧应用领域表。
+> 状态：P2 的 11 张提取与审核表已实现并通过实际 DSH 浏览器验收；当前权威基础结构见 `python/nobei_core/sql/001_product.sql`。学习闭环随后通过 `python/nobei_core/sql/002_learning.sql` 增加 5 张表，形成 Schema v2 的 16 张产品自有表。以下旧结构分析保留为 P2 改造前设计记录。
 
-实施补充（2026-08-31）：以下“当前现状”和评审问题属于P2实施前记录，已采用去掉p1前缀、不引入合集的设计。实际字段以SQL为准。runs持久保存有效/已修改/已拒绝等计数，pending及知识点数由这些列直接计算；读快照不扫描候选、审核历史或原始生成输出。
+实施补充（2026-09-01）：Schema v1 使用文档正文内联、不可变候选与独立审核、文档绝对证据坐标和写事务计数；Schema v2 增加学习课程、学习单元、题目、作答记录和掌握度状态。空库依次应用 `001_product.sql` 与 `002_learning.sql`，已有合法 v1 库只应用学习扩展，不读取或迁移旧 Nobei 数据。
 
-P3使用确定性、内存中的物理范围计划，未新增持久chunks表。所有证据相对规范化正文计Unicode字符，不是JavaScript UTF-16 code unit。PDF记录规范化正文和媒体类型，不保存PDF文件或版面坐标。P4只支持最终产品schema内升级与备份恢复，不把实施中的P2/P3 fixture库作为已发布版本迁移。
+P3 使用确定性、内存中的物理范围计划，未新增持久 chunks 表。所有证据相对规范化正文计 Unicode 字符，不是 JavaScript UTF-16 code unit。PDF 记录规范化正文和媒体类型，不保存 PDF 文件或版面坐标。
 
 ## 1. 背景与目标
 
@@ -56,7 +56,19 @@ P2 的目标只有一个：**让 `p1_*` 这一层本身成为长期产品模型*
 | `run_events` | `p1_run_events` | 仅改名 |
 | `idempotency_records` | `p1_idempotency` | 仅改名，scope 泛化 |
 
-### 4.2 DDL 草案
+### 4.2 Schema v2 学习扩展
+
+| 学习表 | 作用 |
+|---|---|
+| `learning_courses` | 冻结课程版本、标题、进度与课程状态 |
+| `learning_units` | 保存课程中的知识点快照与顺序 |
+| `learning_assessments` | 保存与真实陈述和原文证据绑定的客观题及 Core 私有答案 |
+| `learning_attempts` | 保存幂等作答、判分结果与补救阶段 |
+| `learning_mastery_states` | 保存掌握度、复测计数与下一次复习时间 |
+
+学习扩展只引用已经审核确认的知识点快照，不改变原候选、审核决策或证据坐标语义。
+
+### 4.3 DDL 草案
 
 ```sql
 -- 产品 schema 版本
@@ -219,7 +231,7 @@ CREATE TABLE idempotency_records (
 );
 ```
 
-### 4.3 废弃清单（来自 v8，运行时零使用）
+### 4.4 废弃清单（来自 v8，运行时零使用）
 
 `courses`、`app_state`、`import_jobs`、`chunks`、`kp_keywords`、`kp_blanks`、`kp_confirm_log`、`memory_items`、`question_instances`、`review_logs`(FSRS)、`providers`、`usage_logs`、`kp_fts`（及其 shadow 表）、`file_cleanup_queue`。
 

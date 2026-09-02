@@ -60,7 +60,7 @@ Host从包入口导出Schemastery `Config`，Cordis加载和配置更新、直�
 ### SQLite
 
 - 当前为 BetterLearn 独立数据文件；
-- 11 张产品自有表，正文存 documents，没有 import_jobs 双投影或单块 chunks；
+- Schema v2 共 16 张产品自有表：11 张提取与审核表、5 张学习课程与掌握度表；正文存于 documents，没有 import_jobs 双投影或单块 chunks；
 - 原候选与审核决策分开，知识点证据统一文档绝对 Unicode 字符坐标；
 - 写事务维护计数和追加事件，读快照不重放历史或重新定位；
 - 不自动读取或修改旧项目的 `nobei.db`。
